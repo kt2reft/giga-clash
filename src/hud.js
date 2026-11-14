@@ -1,7 +1,7 @@
 // =====================================================================
 // GIGA-CLASH  hud.js — 2Dオーバーレイ（HUD・メニュー・タッチ操作の表示）
 // =====================================================================
-import { THEME, ZKEYS, ZONES, ZONE_EFF, ST, CON, CITY, BASE_INFO, CARDS, TEAM_NAME, TEAM_COL, SLOT_COL, DIFF, BAL, pilotOf, zoneOff, promptFor, crewNavi, chargerOpen, BATTLE_TIME } from './sim.js';
+import { CHARS, charOf, THEME, ZKEYS, ZONES, ZONE_EFF, ST, CON, CITY, BASE_INFO, CARDS, TEAM_NAME, TEAM_COL, SLOT_COL, DIFF, BAL, pilotOf, zoneOff, promptFor, crewNavi, chargerOpen, BATTLE_TIME } from './sim.js';
 import { W, H, EXT_H } from './render3d.js';
 
 const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Noto Sans CJK JP","Yu Gothic","Meiryo",sans-serif';
@@ -65,6 +65,7 @@ export function createHud(ctx, R) {
       if (G.phase === 'p1') drawP1(G, view);
       else if (G.phase === 'trans') drawTrans(G, view);
       else { drawP2(G, view); }
+      drawSkill(G, view);
       drawOverlays(G, view);
       if (G.phase === 'result') drawResult(G, view);
     },
@@ -270,7 +271,7 @@ export function createHud(ctx, R) {
       const c = T.crew.find(x => x.slot === me[0]);
       let nv = c && crewNavi(G, T, c);
       if (c && c.role === 'pilot' && live && G.cd <= 0) {
-        const msg = c.fat > 75 ? `疲れてきた！ ${view.dev === 'pad' ? 'Back' : view.dev === 'touch' ? '「脱出」' : 'X'} で仲間と交代` : T.g.sp >= 100 && !G.sp ? `必殺技OK！ ${view.key.s} で発動` : `${view.dev === 'pad' ? 'Ⓧ' : view.dev === 'touch' ? '「弱」' : 'J'}連打でコンボ／敵の攻撃の直前にガードでジャストガード`;
+        const msg = c.fat > 75 ? `疲れてきた！ ${view.dev === 'pad' ? 'Back' : view.dev === 'touch' ? '「脱出」' : 'X'} で仲間と交代` : T.g.sp >= 100 && !G.sp ? `必殺技OK！ ${view.key.s} で発動` : (Math.floor(S.t / 5) % 2 ? `${view.key.j}でジャンプ！ 相手を飛び越えて回り込める（強攻撃は対空になる）` : `${view.dev === 'pad' ? 'Ⓧ' : view.dev === 'touch' ? '「弱」' : 'J'}連打でコンボ／敵の攻撃の直前にガードでジャストガード`);
         const w = tw(msg, 16) + 36; rr(W / 2 - w / 2, EXT_H + 26, w, 32, 10); ctx.fillStyle = 'rgba(40,32,8,.9)'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); text(msg, W / 2, EXT_H + 42, 16, '#ffe9a8');
       }
       if (nv) {
@@ -324,6 +325,21 @@ export function createHud(ctx, R) {
       text(lost ? `${th.pod}へ急げ！ 残り ${Math.max(0, G.esc.t).toFixed(1)}秒` : 'トドメの一撃をチャージ中！', W / 2, 355, 24, '#fff');
       if (lost) for (const s of me) { const c = T.crew.find(x => x.slot === s); if (c && !c.escaped) { const a0 = R.projI(c.x, c.y), b0 = R.projI(ST.pod.x, ST.pod.y), a = Math.atan2(b0.y - a0.y, b0.x - a0.x); ctx.save(); ctx.translate(a0.x + Math.cos(a) * 50, a0.y + Math.sin(a) * 50); ctx.rotate(a); ctx.fillStyle = '#7dffb0'; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.fill(); ctx.restore(); } }
     }
+  }
+  // ---------------------------------------------------------------- キャラ固有スキル
+  function drawSkill(G, view) {
+    if (!view.locals.length || view.dev === 'touch' || !G.skcd) return;
+    const slot = view.locals[0], ch = charOf(slot), cd = G.skcd[slot] || 0;
+    let line = null, total = 1;
+    if (G.phase === 'p1' && G.cd <= 0) { line = ch.p1; total = ch.cd1; }
+    else if (G.phase === 'p2' && G.cd <= 0) { const T = G.teams[slot < 4 ? 0 : 1], c = T.crew[slot % 4]; if (c && c.role !== 'pilot' && !c.escaped) { line = ch.p2; total = ch.cd2; } }
+    if (!line) return;
+    const x = G.phase === 'p2' ? W / 2 - 180 : 18, y = G.phase === 'p2' ? H - 60 : H - 66, ready = cd <= 0, [nm, desc] = line.split('：');
+    rr(x, y, 360, 52, 12); ctx.fillStyle = 'rgba(8,10,22,.86)'; ctx.fill(); ctx.strokeStyle = ready ? '#7dffb0' : '#4a5577'; ctx.lineWidth = 2; ctx.stroke();
+    const cx = x + 28, cy = y + 26; ctx.fillStyle = ready ? '#7dffb0' : '#2a3148'; ctx.beginPath(); ctx.arc(cx, cy, 19, 0, 7); ctx.fill();
+    if (!ready) { ctx.fillStyle = '#7dffb0'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 19, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - cd / total)); ctx.closePath(); ctx.globalAlpha = 0.45; ctx.fill(); ctx.globalAlpha = 1; }
+    text(ready ? view.key.k : String(Math.ceil(cd)), cx, cy, ready ? 15 : 16, ready ? '#11131f' : '#fff');
+    text(`${ch.title}のスキル：${nm}`, x + 56, y + 17, 14, ready ? '#7dffb0' : '#9fb2e6', 'left'); text(desc, x + 56, y + 37, 12, '#cfd6ff', 'left', 'normal');
   }
   // ---------------------------------------------------------------- 共通のかぶせ表示
   function drawOverlays(G, view) {
@@ -422,6 +438,7 @@ export function createHud(ctx, R) {
         ['拠点', '輪の中に立つと確保。敵がいると止まる。取った拠点は後半戦の機体を強化する。'],
         ['パンチ', '相手を殴ると少しの間ダウンし、かついだ市民を落とす。'],
         ['逆境カード', '前半で負けた側は、後半を有利にするカードを1枚選べる。先に巨大化もできる。'],
+        ['キャラ', '8人それぞれに固有スキル（I / Ⓨ）がある。ロビーの「キャラ」で選べる。前半戦と裏方で効果が変わる。'],
         ['後半戦(3分)', '巨大ロボ vs 大怪獣。1人が操縦、3人が内部で裏方。相手のHPを0にしたら勝ち。'],
       ]],
       ['遊び方 2/3 ― 後半戦（機体の中）', [
@@ -435,10 +452,10 @@ export function createHud(ctx, R) {
         ['交代・操縦', '交代レバーを引いた人が次の操縦者。弱攻撃の連打でコンボ、攻撃が当たる直前のガードで「ジャストガード」。'],
       ]],
       ['遊び方 3/3 ― 操作', [
-        ['キーボード', '移動 WASD／決定・つかむ・作業 Space／パンチ・弱攻撃 J／投げる・強攻撃 K'],
-        ['', 'ガード L（長押し）／飛び道具 U／必殺技 I／緊急脱出 X／一時停止 Esc'],
-        ['コントローラー', '移動 スティック／つかむ・作業 Ⓐ／パンチ・弱攻撃 Ⓧ／投げる・強攻撃 Ⓑ'],
-        ['', 'ガード RB／飛び道具 LB／必殺技 Ⓨ／緊急脱出 Back／一時停止 Start'],
+        ['キーボード', '移動 WASD／決定・つかむ・作業 Space／パンチ・弱攻撃 J／投げる・強攻撃 K／スキル I'],
+        ['', '操縦中：ジャンプ W か Space／ガード L／飛び道具 U／必殺技 I／緊急脱出 X／一時停止 Esc'],
+        ['コントローラー', '移動 スティック／つかむ・作業 Ⓐ／パンチ・弱攻撃 Ⓧ／投げる・強攻撃 Ⓑ／スキル Ⓨ'],
+        ['', '操縦中：ジャンプ Ⓐ か↑／ガード RB／飛び道具 LB／必殺技 Ⓨ／緊急脱出 Back／一時停止 Start'],
         ['スマホ', '画面左をなぞって移動、右のボタンで操作。横向きがおすすめ。'],
         ['同じ画面で', 'ロビーで「ローカル人数」を増やすと、コントローラーの数だけ一緒に遊べる。'],
         ['オンライン', 'このページを共有した相手と、同時に開いて「オンライン」を押すと同じ部屋に入る。'],
@@ -461,6 +478,7 @@ export function createHud(ctx, R) {
         const sl = L.slots[t * 4 + k], y = 176 + k * 55; rr(x + 16, y, 428, 46, 10); ctx.fillStyle = sl.me ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.05)'; ctx.fill(); if (sl.me) { ctx.strokeStyle = sl.col; ctx.lineWidth = 2; ctx.stroke(); }
         face(sl.human ? sl.col : '#6b7391', x + 46, y + 23, 0.95);
         text(sl.name, x + 76, y + 23, 18, sl.human ? sl.col : '#8a93b5', 'left'); text(sl.tag, x + 432, y + 23, 13, sl.me ? '#ffe9a8' : '#8a93b5', 'right', 'normal');
+        const ch = CHARS[t][k], d1 = `${ch.title}｜${ch.p1.split('：')[0]}・${ch.p2.split('：')[0]}`, room = 432 - 40 - (86 + tw(sl.name, 18)); ctx.font = font(12, 'normal'); text(ctx.measureText(d1).width < room ? d1 : `${ch.title}｜${ch.p1.split('：')[0]}`, x + 86 + tw(sl.name, 18), y + 24, 12, sl.me ? '#ffe9a8' : '#7d88aa', 'left', 'normal');
       }
     }
     const y1 = 424, bw = 226, x0 = W / 2 - 480;
@@ -469,6 +487,7 @@ export function createHud(ctx, R) {
     if (L.host) { hud.button('diff', x0 + 488, y1, bw, 58, `Botの強さ：${DIFF[L.diff].name}`, '#cfe3ff', '相手が全員Botのとき', 19); hud.button('p1', x0 + 732, y1, bw, 58, L.skipP1 ? '後半戦だけ' : '前半戦＋後半戦', '#cfe3ff', '試合の長さ', 19); }
     else { text(`Botの強さ：${DIFF[L.diff].name}　／　${L.skipP1 ? '後半戦だけ' : '前半戦＋後半戦'}（ホストが設定）`, x0 + 730, y1 + 29, 15, '#9fb2e6'); }
     if (L.online) hud.button('name', x0, y1 + 74, bw, 52, `名前：${L.name}`, '#9aa3c7', '押すと変わる', 17);
+    hud.button('char', x0 + 488, y1 + 74, bw, 52, `キャラ：${CHARS[L.team][L.ch].title}`, '#ffd6a5', '押すとキャラを替える', 17);
     hud.button('navi', x0 + 244, y1 + 74, bw, 52, `ナビ：${L.navi ? 'ON' : 'OFF'}`, L.navi ? '#ffe9a8' : '#9aa3c7', L.navi ? '次にやることを表示' : '上級者向け：表示しない', 17);
     if (L.code) { hud.button('invite', x0 + 732, y1 + 74, bw, 52, '招待リンクをコピー', '#7dffb0', `部屋コード ${L.code}`, 17); }
     if (L.host) hud.button('start', W / 2 - 170, 564, 340, 72, 'スタート！', '#ffd23f', L.online ? 'あなたがホストです' : (L.dev === 'kb' ? 'Enter' : ''), 30);

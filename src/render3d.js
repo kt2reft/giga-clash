@@ -181,6 +181,7 @@ function poseGiant(u, g, T, G, t, rise) {
   if (g.dead > 0) down = Math.min(1, g.dead * 2);
   let y = 0, zoff = 0;
   if (g.dodgeT > 0) { const p = clamp(1 - g.dodgeT / 1.5, 0, 1), s = Math.sin(p * Math.PI); y = s * 10; zoff = -s * 16; }
+  y += (g.jy || 0) * XS;
   R.position.set(ex(g.x), y - (1 - rise) * 40 - (g.dead > 0 ? Math.min(6, g.dead * 1.2) : 0), zoff);
   R.scale.setScalar(0.4 + 0.6 * rise);
   let yaw = g.face > 0 ? Math.PI / 2 - 0.55 : -Math.PI / 2 + 0.55;
@@ -196,6 +197,12 @@ function poseGiant(u, g, T, G, t, rise) {
   u.body.rotation.x = -down * 1.45 + lean; u.body.position.y = bob + down * 3; u.body.rotation.z = stun && !down ? Math.sin(t * 6) * 0.05 : 0;
   const sw = moving ? Math.sin(g.walk) : 0;
   u.legs[0].rotation.x = -sw * 0.5; u.legs[1].rotation.x = sw * 0.5; u.knees[0].rotation.x = Math.max(0, sw) * 0.6; u.knees[1].rotation.x = Math.max(0, -sw) * 0.6;
+  if (g.jy > 2) {
+    // 空中：脚をたたむ。ジャンプ攻撃中は片脚を突き出す（怪獣は前のめりのボディプレス）
+    if (g.airAtk && u.kind === 0) { u.legs[1].rotation.x = -1.3; u.knees[1].rotation.x = 0; u.legs[0].rotation.x = 0.5; u.knees[0].rotation.x = 1.2; u.body.rotation.x += 0.25; }
+    else if (g.airAtk) { u.body.rotation.x += 0.5; u.legs[0].rotation.x = u.legs[1].rotation.x = -0.6; }
+    else { u.legs[0].rotation.x = -0.7; u.legs[1].rotation.x = -0.4; u.knees[0].rotation.x = 1.3; u.knees[1].rotation.x = 1.1; }
+  }
   const A = u.arms, Eb = u.elbows, E1 = Math.max(0, ef), E2 = Math.max(0, eb);
   if (u.kind === 0) {
     u.torso.rotation.y = (E1 - E2) * 0.5 + (ef < 0 ? ef : 0) * 0.6 - (eb < 0 ? eb : 0) * 0.6;
@@ -312,6 +319,9 @@ export function createRenderer(canvas) {
   // 前半戦のキャラ
   const p1Figs = [], p1Marks = [];
   for (let s = 0; s < 8; s++) { const f = makeFigure(SLOT_COL[s], s < 4 ? 0 : 1); f.scale.setScalar(1.15); city.add(f); shadowAll(f); f.userData.shadow.castShadow = false; p1Figs.push(f); const mk = mesh(new THREE.RingGeometry(1.25, 1.6, 24), glow(0xffc531, { transparent: true, opacity: 0.95, depthWrite: false }), city); mk.rotation.x = -Math.PI / 2; mk.visible = false; p1Marks.push(mk); }
+  const bubbleMat = glow(0x38d6c4, { transparent: true, opacity: 0.28, depthWrite: false });
+  for (const f of p1Figs) { f.userData.bubble = mesh(G_SPH, bubbleMat, f, 0, 1.3, 0, 1.9, 1.9, 1.9); f.userData.bubble.visible = false; }
+  const slimePool = []; for (let i = 0; i < 4; i++) { const m = mesh(new THREE.CircleGeometry(1, 24), glow(0x7bd34a, { transparent: true, opacity: 0.55, depthWrite: false }), city, 0, 0.11, 0); m.rotation.x = -Math.PI / 2; m.visible = false; slimePool.push(m); }
   const citPool = []; for (let i = 0; i < 24; i++) { const c = makeCitizen(); c.visible = false; city.add(c); citPool.push(c); }
   // 巨人
   const giants = [makeRobot(), makeKaiju()]; for (const u of giants) { city.add(u.root); u.root.visible = false; }
@@ -442,6 +452,9 @@ export function createRenderer(canvas) {
       poseFigure(f, f.userData.walk, c.carry >= 0, c.punchT, c.stun > 0, time);
       f.rotation.z = c.stun > 0 ? 1.2 : 0; f.position.y = c.stun > 0 ? 0.5 : 0;
       f.scale.setScalar(P.hen[c.team] ? 1.3 : 1.15);
+      f.userData.bubble.visible = c.shieldT > 0; if (c.shieldT > 0) f.userData.bubble.scale.setScalar(1.9 + Math.sin(time * 10) * 0.1);
+      if (c.dashT > 0) f.rotation.x = 0.5; else f.rotation.x = 0;
+      if ((c.boostT > 0 || c.dashT > 0) && Math.random() < 0.7) pCity.add(c.x + rnd(-0.4, 0.4), 0.6 + rnd(0, 1), c.z + rnd(-0.4, 0.4), 0, rnd(0.5, 2), 0, 0.4, rnd(0.25, 0.45), c.team ? '#ff9af0' : '#9fe8ff', 'dust');
       if (view.locals.includes(s)) { mk.visible = true; mk.position.set(c.x, 0.12, c.z); mk.material.color.set(SLOT_COL[s]); }
     }
     let n = 0;
@@ -466,6 +479,7 @@ export function createRenderer(canvas) {
       }
     });
     goalObjs.forEach((o, t) => { if (o.spin) o.spin.rotation.x = time * 1.5; });
+    slimePool.forEach((m, i) => { const sl = show && P && P.slimes && P.slimes[i]; m.visible = !!sl; if (sl) { m.position.set(sl.x, 0.11, sl.z); m.scale.setScalar(sl.r * Math.min(1, sl.t * 2) * (1 + Math.sin(time * 4 + i) * 0.04)); if (Math.random() < 0.15) pCity.add(sl.x + rnd(-2, 2), 0.2, sl.z + rnd(-2, 2), 0, rnd(0.5, 1.5), 0, 0.6, rnd(0.2, 0.4), '#9be36d', 'dust'); } });
   }
   function syncGiants(G, t, dt) {
     for (let k = 0; k < 2; k++) {

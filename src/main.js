@@ -30,15 +30,15 @@ const APP = { screen: 'title', help: -1, paused: false, note: '', noteT: 0 };
 let G = null;
 const NAMES = ['ハヤテ', 'ツバサ', 'リュウ', 'アカネ', 'ミドリ', 'ソラ', 'カイ', 'ナギ', 'レン', 'ヒカリ', 'ユウ', 'マコト', 'シン', 'ルナ'];
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
-const LOC = { navi: store.get('gc_navi') !== '0', low: store.get('gc_low') === '1' || location.search.includes('fast'), n: 1, team: 0, diff: 1, skipP1: false, name: store.get('gc_name') || NAMES[(Math.random() * NAMES.length) | 0], slots: [], dev: 'kb' };
+const LOC = { ch: +(store.get('gc_ch') || 0) % 4, navi: store.get('gc_navi') !== '0', low: store.get('gc_low') === '1' || location.search.includes('fast'), n: 1, team: 0, diff: 1, skipP1: false, name: store.get('gc_name') || NAMES[(Math.random() * NAMES.length) | 0], slots: [], dev: 'kb' };
 const NET = { claudeRoom: null, mode: '', code: '', peerStat: '', room: null, on: false, t0: 0, peers: [], me: null, host: null, isHost: false, claimT: 0, as: [], mid: 0, hbStr: '', seq: 0, lastQ: -1, lastEv: 0, evId: 0, ring: [], pubT: 0, inT: 0, rin: {}, inStr: '' };
 function note(s, t = 3) { APP.note = s; APP.noteT = t; }
 resize(); R.setQuality(LOC.low);
 
 // ---------------------------------------------------------------- 入力
 const keys = {}, uiQ = { dx: 0, dy: 0, ok: false, back: false, pause: false };
-const newPend = () => ({ aP: false, bP: false, xP: false, mP: false, sP: false, eP: false, card: 0, rt: -1 });
-const players = [0, 1, 2, 3].map(() => ({ pend: newPend(), cnt: { a: 0, b: 0, x: 0, m: 0, s: 0, e: 0 }, hold: { mx: 0, my: 0, a: false, x: false, g: false }, card: 0, rt: -1 }));
+const newPend = () => ({ jP: false, aP: false, bP: false, xP: false, mP: false, sP: false, eP: false, card: 0, rt: -1 });
+const players = [0, 1, 2, 3].map(() => ({ pend: newPend(), cnt: { a: 0, b: 0, x: 0, m: 0, s: 0, e: 0, j: 0 }, hold: { mx: 0, my: 0, a: false, x: false, g: false }, card: 0, rt: -1 }));
 function press(li, act) {
   const p = players[li]; if (!p) return; p.pend[act + 'P'] = true; p.cnt[act] = (p.cnt[act] + 1) % 1000;
   if (G && G.sp && G.sp.phase === 'seq' && (act === 'a' || act === 'x' || act === 's')) { p.pend.rt = G.sp.ringT; p.rt = G.sp.ringT; }
@@ -59,6 +59,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (KEYMAP[e.code]) press(0, KEYMAP[e.code]);
+  if (e.code === 'KeyW' || e.code === 'ArrowUp') press(0, 'j');
   if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') pickCard(0, +e.code.slice(5));
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -69,10 +70,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && G &
 const touch = { used: false, pointers: new Map(), stick: null, btn: {} };
 function touchLayout() {
   if (!G || !LOC.slots.length || uiActive() || G.phase === 'trans') return [];
-  if (G.phase === 'p1') return [{ n: 'a', x: 1150, y: 610, r: 62, label: 'かつぐ' }, { n: 'x', x: 1010, y: 652, r: 46, label: 'パンチ' }, { n: 'b', x: 1070, y: 520, r: 44, label: '投げる' }];
+  const skl = () => { const cd = G.skcd ? G.skcd[LOC.slots[0]] : 0; return { n: 's', x: 1200, y: 470, r: 40, label: cd > 0 ? `${Math.ceil(cd)}秒` : 'スキル', col: cd > 0 ? '#8a93b5' : '#7dffb0' }; };
+  if (G.phase === 'p1') return [{ n: 'a', x: 1150, y: 610, r: 62, label: 'かつぐ' }, { n: 'x', x: 1010, y: 652, r: 46, label: 'パンチ' }, { n: 'b', x: 1070, y: 520, r: 44, label: '投げる' }, skl()];
   const T = G.teams[LOC.slots[0] < 4 ? 0 : 1], c = T.crew.find(c => c.slot === LOC.slots[0]);
-  if (c && c.role === 'pilot' && G.phase === 'p2') return [{ n: 'x', x: 1050, y: 630, r: 50, label: '弱' }, { n: 'b', x: 1170, y: 560, r: 50, label: '強' }, { n: 'g', x: 1175, y: 670, r: 42, label: 'ガード' }, { n: 'm', x: 930, y: 665, r: 40, label: '飛び道具' }, { n: 's', x: 930, y: 565, r: 44, label: '必殺', col: '#ffd23f' }, { n: 'e', x: 1222, y: 446, r: 30, label: '脱出', col: '#ff8a80' }];
-  return [{ n: 'a', x: 1150, y: 620, r: 62, label: 'アクション' }, { n: 'b', x: 1015, y: 660, r: 44, label: '投げる' }];
+  if (c && c.role === 'pilot' && G.phase === 'p2') return [{ n: 'x', x: 1050, y: 630, r: 50, label: '弱' }, { n: 'b', x: 1170, y: 560, r: 50, label: '強' }, { n: 'g', x: 1175, y: 670, r: 42, label: 'ガード' }, { n: 'm', x: 930, y: 665, r: 40, label: '飛び道具' }, { n: 's', x: 930, y: 565, r: 44, label: '必殺', col: '#ffd23f' }, { n: 'e', x: 1222, y: 446, r: 30, label: '脱出', col: '#ff8a80' }, { n: 'a', x: 1060, y: 500, r: 44, label: 'ジャンプ', col: '#9fe8ff' }];
+  return [{ n: 'a', x: 1150, y: 620, r: 62, label: 'アクション' }, { n: 'b', x: 1015, y: 660, r: 44, label: '投げる' }, skl()];
 }
 const toLogical = e => { const r = ui.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; };
 ui.addEventListener('pointerdown', e => {
@@ -117,7 +119,7 @@ function pollPads() {
       if (edge(0)) uiQ.ok = true; if (edge(1)) uiQ.back = true;
     } else if (li >= 0) {
       if (G && G.phase === 'trans') { if (edge(2)) pickCard(li, 1); if (edge(3)) pickCard(li, 2); if (edge(1)) pickCard(li, 3); }
-      else { if (edge(0)) press(li, 'a'); if (edge(2)) press(li, 'x'); if (edge(1)) press(li, 'b'); if (edge(3)) press(li, 's'); if (edge(4) || edge(6)) press(li, 'm'); if (edge(8)) press(li, 'e'); }
+      else { if (edge(0)) press(li, 'a'); if (edge(2)) press(li, 'x'); if (edge(1)) press(li, 'b'); if (edge(3)) press(li, 's'); if (edge(4) || edge(6)) press(li, 'm'); if (edge(8)) press(li, 'e'); if (edge(12) || (dy < 0 && prev.dy >= 0)) press(li, 'j'); }
       const h = PADS.hold[li] || (PADS.hold[li] = { mx: 0, my: 0, a: false, x: false, g: false });
       if (Math.hypot(ax, ay) > Math.hypot(h.mx, h.my)) { h.mx = ax; h.my = ay; }
       h.a = h.a || b(0); h.x = h.x || b(2); h.g = h.g || b(5) || b(7);
@@ -142,7 +144,7 @@ function sampleHolds() {
 function applyLocalInputs() {
   LOC.slots.forEach((slot, li) => {
     const p = players[li], i = G.inp[slot], h = p.hold, d = p.pend;
-    i.mx = h.mx; i.my = h.my; i.a = h.a; i.x = h.x; i.g = h.g; i.aP = d.aP; i.bP = d.bP; i.xP = d.xP; i.mP = d.mP; i.sP = d.sP; i.eP = d.eP; i.card = d.card; i.rt = d.rt;
+    i.mx = h.mx; i.my = h.my; i.a = h.a; i.x = h.x; i.g = h.g; i.aP = d.aP; i.bP = d.bP; i.xP = d.xP; i.mP = d.mP; i.sP = d.sP; i.eP = d.eP; i.jP = d.jP; i.card = d.card; i.rt = d.rt;
     players[li].pend = newPend();
   });
 }
@@ -177,7 +179,7 @@ function drainEvents() {
 function beginMatch(g, slots) { G = g; LOC.slots = slots; APP.screen = 'game'; APP.paused = false; hud.reset(); R.reset(); touch.btn = {}; touch.pointers.clear(); touch.stick = null; for (const p of players) { p.pend = newPend(); p.card = 0; p.rt = -1; } hud.focus = -1; }
 function offlineSlots() {
   const sl = Array.from({ length: 8 }, (_, i) => ({ name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i] })), mine = [];
-  for (let li = 0; li < LOC.n; li++) { const s = LOC.team * 4 + li; sl[s].human = true; sl[s].name = LOC.n === 1 ? 'あなた' : `P${li + 1}`; mine.push(s); }
+  for (let li = 0; li < LOC.n; li++) { const s = LOC.team * 4 + (LOC.ch + li) % 4; sl[s].human = true; sl[s].name = LOC.n === 1 ? 'あなた' : `P${li + 1}`; mine.push(s); }
   return [sl, mine];
 }
 function startOffline(extra = {}) { const [sl, mine] = offlineSlots(); beginMatch(S.createMatch({ slots: sl, diff: LOC.diff, skipP1: LOC.skipP1, ...extra }), mine); }
@@ -190,7 +192,7 @@ if (IN_CLAUDE) { try { window.claude.use('room').then(r => { NET.claudeRoom = r 
 // claude.ai の外（GitHub Pages など）では WebRTC で直接つなぐ
 const PEER_OK = !IN_CLAUDE && typeof RTCPeerConnection !== 'undefined' && /^https?:$/.test(location.protocol);
 const setPresence = patch => { try { const p = NET.room.presence(patch); if (p && p.catch) p.catch(() => { }); } catch (e) { } };
-function myGc(h) { return { v: 2, ver: VERSION, n: LOC.name, t: LOC.team, k: LOC.n, t0: NET.t0, h: h ? 1 : 0 }; }
+function myGc(h) { return { v: 2, ver: VERSION, c: LOC.ch, n: LOC.name, t: LOC.team, k: LOC.n, t0: NET.t0, h: h ? 1 : 0 }; }
 function onlineButton() {
   if (IN_CLAUDE) { if (!NET.claudeRoom) { note('この表示ではオンライン機能を使えません（共有された相手と、サインインした状態で開いてください）', 5); return; } NET.mode = 'claude'; NET.room = NET.claudeRoom; enterOnline(); }
   else if (PEER_OK) { APP.screen = 'online'; hud.focus = -1; }
@@ -242,7 +244,8 @@ function assignSlots() {
   const as = [null, null, null, null, null, null, null, null], sorted = NET.peers.slice().sort((a, b) => older(a, b) ? -1 : 1);
   for (const p of sorted) {
     const g = p.presence.gc, k = clamp(g.k | 0, 1, 4), want = g.t === 1 ? 1 : 0, nm = String(g.n || '？').slice(0, 8);
-    for (let li = 0; li < k; li++) for (const t of [want, 1 - want]) { let done = false; for (let j = 0; j < 4; j++) if (!as[t * 4 + j]) { as[t * 4 + j] = [p.peer, li, k > 1 ? `${nm}${li + 1}` : nm]; done = true; break; } if (done) break; }
+    const pc = clamp(g.c | 0, 0, 3);
+    for (let li = 0; li < k; li++) for (const t of [want, 1 - want]) { let done = false; for (let jj = 0; jj < 4; jj++) { const j = (pc + jj) % 4; if (as[t * 4 + j]) continue; as[t * 4 + j] = [p.peer, li, k > 1 ? `${nm}${li + 1}` : nm]; done = true; break; } if (done) break; }
   }
   return as;
 }
@@ -295,6 +298,7 @@ function netTick(dt, now) {
           const key = p.peer + ':' + li, last = NET.rin[key] || a, i = G.inp[slot];
           i.mx = clamp(a[0] / 9, -1, 1); i.my = clamp(a[1] / 9, -1, 1); i.a = !!(a[2] & 1); i.x = !!(a[2] & 2); i.g = !!(a[2] & 4);
           if (a[3] !== last[3]) i.aP = true; if (a[4] !== last[4]) i.bP = true; if (a[5] !== last[5]) i.xP = true; if (a[6] !== last[6]) i.mP = true; if (a[7] !== last[7]) i.sP = true; if (a[8] !== last[8]) i.eP = true;
+          if (a.length > 11 && a[11] !== last[11]) i.jP = true;
           if (a[9] >= 1 && a[9] <= 3) i.card = a[9] | 0; if ((i.aP || i.xP || i.sP) && a[10] >= 0) i.rt = a[10] / 100;
           NET.rin[key] = a;
         }
@@ -321,7 +325,7 @@ function netTick(dt, now) {
     // 自分の入力を送る
     if (G && G.client && now - NET.inT > 30) {
       NET.inT = now; const pk = [NET.mid];
-      for (let li = 0; li < LOC.slots.length; li++) { const p = players[li], h = p.hold; pk.push([Math.round(h.mx * 9), Math.round(h.my * 9), (h.a ? 1 : 0) | (h.x ? 2 : 0) | (h.g ? 4 : 0), p.cnt.a, p.cnt.b, p.cnt.x, p.cnt.m, p.cnt.s, p.cnt.e, G.phase === 'trans' ? p.card : 0, p.rt >= 0 ? Math.round(p.rt * 100) : -1]); }
+      for (let li = 0; li < LOC.slots.length; li++) { const p = players[li], h = p.hold; pk.push([Math.round(h.mx * 9), Math.round(h.my * 9), (h.a ? 1 : 0) | (h.x ? 2 : 0) | (h.g ? 4 : 0), p.cnt.a, p.cnt.b, p.cnt.x, p.cnt.m, p.cnt.s, p.cnt.e, G.phase === 'trans' ? p.card : 0, p.rt >= 0 ? Math.round(p.rt * 100) : -1, p.cnt.j]); }
       const str = JSON.stringify(pk); if (str !== NET.inStr) { NET.inStr = str; setPresence({ in: pk }); }
     }
   }
@@ -374,6 +378,7 @@ function onUI(id) {
     case 'team': LOC.team ^= 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'locals': LOC.n = LOC.n % 4 + 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'diff': if (host) LOC.diff = (LOC.diff + 1) % 4; break;
+    case 'char': LOC.ch = (LOC.ch + 1) % 4; store.set('gc_ch', String(LOC.ch)); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'navi': LOC.navi = !LOC.navi; store.set('gc_navi', LOC.navi ? '1' : '0'); break;
     case 'p1': if (host) LOC.skipP1 = !LOC.skipP1; break;
     case 'name': LOC.name = NAMES[(NAMES.indexOf(LOC.name) + 1 + ((Math.random() * 3) | 0)) % NAMES.length]; store.set('gc_name', LOC.name); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
@@ -400,7 +405,7 @@ function uiNav() {
   uiQ.dx = uiQ.dy = 0; uiQ.ok = uiQ.back = uiQ.pause = false;
 }
 function lobbyModel() {
-  const L = { navi: LOC.navi, online: NET.on, team: LOC.team, nLocal: LOC.n, diff: LOC.diff, skipP1: LOC.skipP1, name: LOC.name, dev: LOC.dev, host: !NET.on || NET.isHost, slots: [], status: '', hint: '', padInfo: `コントローラー ${PADS.list.length}台` };
+  const L = { ch: LOC.ch, navi: LOC.navi, online: NET.on, team: LOC.team, nLocal: LOC.n, diff: LOC.diff, skipP1: LOC.skipP1, name: LOC.name, dev: LOC.dev, host: !NET.on || NET.isHost, slots: [], status: '', hint: '', padInfo: `コントローラー ${PADS.list.length}台` };
   if (NET.on) {
     const as = NET.as || [];
     for (let i = 0; i < 8; i++) { const a = as[i], me = a && NET.me && a[0] === NET.me.peer; L.slots.push(a ? { name: String(a[2]).slice(0, 10), human: true, col: S.SLOT_COL[i], me, tag: me ? 'あなた' : (NET.host && a[0] === NET.host.peer ? 'ホスト' : '参加者') } : { name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i], me: false, tag: 'Bot' }); }
@@ -418,12 +423,12 @@ function lobbyModel() {
   return L;
 }
 const KEYS = {
-  kb: { a: '[Space]', aHold: '[Space長押し]', b: '[K]', s: '[I]' }, pad: { a: 'Ⓐ', aHold: 'Ⓐ長押し', b: 'Ⓑ', s: 'Ⓨ' }, touch: { a: '', aHold: '長押し', b: '「投げる」', s: '「必殺」' },
+  kb: { a: '[Space]', aHold: '[Space長押し]', b: '[K]', s: '[I]', j: 'W', k: 'I' }, pad: { a: 'Ⓐ', aHold: 'Ⓐ長押し', b: 'Ⓑ', s: 'Ⓨ', j: 'Ⓐ', k: 'Ⓨ' }, touch: { a: '', aHold: '長押し', b: '「投げる」', s: '「必殺」', j: '「ジャンプ」', k: '「スキル」' },
 };
 const TIPS = {
-  kb: ['WASD：移動　Space：拾う・入れる・作業（長押し）・連打　K：投げる', 'A/D：移動　J連打：コンボ　K：強　L：ガード（直前でジャスト）　U：飛び道具　I：必殺技　X：脱出'],
-  pad: ['スティック：移動　Ⓐ：拾う・入れる・作業（長押し）・連打　Ⓑ：投げる', 'Ⓧ連打：コンボ　Ⓑ：強　RB：ガード（直前でジャスト）　LB：飛び道具　Ⓨ：必殺技　Back：脱出'],
-  touch: ['左側をなぞって移動　右のボタンで操作', '左側をなぞって移動　右のボタンで攻撃・ガード・必殺技'],
+  kb: ['WASD：移動　Space：拾う・入れる・作業（長押し）・連打　K：投げる　I：スキル', 'A/D：移動　W/Space：ジャンプ　J連打：コンボ　K：強　L：ガード　U：飛び道具　I：必殺技　X：脱出'],
+  pad: ['スティック：移動　Ⓐ：拾う・入れる・作業（長押し）・連打　Ⓑ：投げる　Ⓨ：スキル', 'Ⓐ/↑：ジャンプ　Ⓧ連打：コンボ　Ⓑ：強　RB：ガード　LB：飛び道具　Ⓨ：必殺技　Back：脱出'],
+  touch: ['左側をなぞって移動　右のボタンで操作（緑はキャラ固有スキル）', '左側をなぞって移動　右のボタンでジャンプ・攻撃・ガード・必殺技'],
 };
 
 // ---------------------------------------------------------------- 自己ベスト

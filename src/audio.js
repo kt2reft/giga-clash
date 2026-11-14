@@ -54,6 +54,8 @@ export function sfx(name) {
     case 'charge': AU.tone(200, 1.0, 'sawtooth', 0.06, 4); break;
     case 'bonk': AU.tone(400, 0.1, 'square', 0.15, 0.4); break;
     case 'pump': AU.tone(300 + Math.random() * 200, 0.07, 'square', 0.1, 1.8); break;
+    case 'skill': AU.tone(523, 0.08, 'square', 0.12); AU.tone(784, 0.08, 'square', 0.12, 1, T + 0.07); AU.tone(1046, 0.16, 'square', 0.12, 1, T + 0.14); AU.noise(0.2, 0.12, 3000, 'highpass', T + 0.05); break;
+    case 'jump': AU.noise(0.35, 0.3, 300, 'lowpass'); AU.tone(160, 0.35, 'sawtooth', 0.12, 2.2); break;
     case 'ui': AU.tone(660, 0.06, 'triangle', 0.15, 1.4); break;
     case 'step': AU.noise(0.2, 0.35, 160, 'lowpass'); break;
     case 'fanfare': [523, 659, 784, 1046].forEach((f, i) => AU.tone(f, 0.35, 'square', 0.12, 1, T + i * 0.12)); break;

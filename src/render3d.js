@@ -4,7 +4,7 @@
 //   intScene ：巨大ロボの機関室 / 大怪獣の体内
 // =====================================================================
 import * as THREE from 'three';
-import { CITY, CELL, GW, GH, ST, ROOM, WALLS, ZONES, ZKEYS, CON, WORLD_W, pilotOf, zoneOff, SLOT_COL, TEAM_COL } from './sim.js';
+import { CITY, CELL, GW, GH, ST, ROOM, WALLS, ZONES, ZKEYS, CON, WORLD_W, pilotOf, zoneOff, SLOT_COL, BODY_COL, TEAM_COL, teamOf, TN, NS } from './sim.js';
 
 export const W = 1280, H = 720, EXT_H = 300;
 const XS = 0.16, IS = 0.05;
@@ -59,27 +59,70 @@ class Particles {
 // ---------------------------------------------------------------------
 // キャラクター（前半戦のヒーロー・怪人、機体内部の乗組員）
 // ---------------------------------------------------------------------
-function makeFigure(col, team) {
-  const g = new THREE.Group(), u = {};
-  u.suit = toon(col); u.body = toon(0xe8ecf5);
-  u.torso = mesh(new THREE.CapsuleGeometry(0.52, 0.45, 4, 10), u.body, g, 0, 0.8, 0);
-  mesh(G_CYL, u.suit, g, 0, 0.62, 0, 0.56, 0.36, 0.56);
-  u.head = grp(g, 0, 1.72, 0);
-  mesh(G_SPH, u.suit, u.head, 0, 0, 0, 0.62, 0.6, 0.62);
-  mesh(G_BOX, glow(0x161a2c), u.head, 0, -0.02, 0.42, 0.84, 0.3, 0.4);
-  mesh(G_BOX, glow(0x7fe8ff), u.head, -0.2, -0.02, 0.63, 0.16, 0.12, 0.04); mesh(G_BOX, glow(0x7fe8ff), u.head, 0.2, -0.02, 0.63, 0.16, 0.12, 0.04);
-  if (team === 0) { mesh(G_CYL, toon(0xdddddd), u.head, 0, 0.75, 0, 0.04, 0.4, 0.04); mesh(G_SPH, glow(0xff5a4f), u.head, 0, 0.98, 0, 0.1, 0.1, 0.1); mesh(G_BOX, toon(0xe23b3b), g, 0, 1.2, -0.4, 0.7, 0.16, 0.5); }
-  else { for (const s of [-1, 1]) { const h = mesh(G_CONE, toon(0xf2ead8), u.head, s * 0.38, 0.55, 0, 0.14, 0.5, 0.14); h.rotation.z = -s * 0.5; } mesh(G_CONE, u.suit, g, 0, 0.5, -0.7, 0.2, 0.8, 0.2).rotation.x = -1.9; }
-  u.hL = mesh(G_SPH, u.body, g, -0.7, 0.85, 0.1, 0.2, 0.2, 0.2); u.hR = mesh(G_SPH, u.body, g, 0.7, 0.85, 0.1, 0.2, 0.2, 0.2);
+// 星形（ヒーローの胸のエンブレム）
+const G_STAR = (() => { const sh = new THREE.Shape(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 0.42 : 1, a = Math.PI / 2 + i * Math.PI / 5; i ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); } return new THREE.ExtrudeGeometry(sh, { depth: 0.25, bevelEnabled: false }); })();
+const G_RING = new THREE.RingGeometry(0.78, 0.98, 28);
+// 等身大のキャラ（ヒーローは戦隊風、怪人は前かがみのトゲトゲ）
+function makeFigure(slot) {
+  const team = teamOf(slot), g = new THREE.Group(), u = { team }, col = BODY_COL[slot], hi = SLOT_COL[slot];
+  u.suit = toon(col);
+  // 足元のチーム色リング（ヒーロー：シアン、怪人：マゼンタ）
+  u.ring = mesh(G_RING, glow(team ? 0xff2ed1 : 0x2ee6ff, { transparent: true, opacity: 0.85, depthWrite: false }), g, 0, 0.05, 0); u.ring.rotation.x = -Math.PI / 2;
+  if (team === 0) {
+    const white = toon(0xf7f8ff), gold = toon(0xffcf3a), black = toon(0x0d0f18);
+    u.ty = 0.86; u.hy = 1.78;
+    for (const s of [-1, 1]) { mesh(G_CYL, u.suit, g, s * 0.22, 0.42, 0, 0.18, 0.5, 0.18); mesh(G_CYL, white, g, s * 0.22, 0.13, 0.03, 0.21, 0.26, 0.24); }
+    u.torso = grp(g, 0, u.ty, 0);
+    mesh(new THREE.CapsuleGeometry(0.46, 0.42, 4, 10), u.suit, u.torso, 0, 0, 0);
+    mesh(G_BOX, white, u.torso, 0, 0.14, 0.32, 0.62, 0.36, 0.2).rotation.z = Math.PI / 4;   // 胸の白いV
+    mesh(G_BOX, u.suit, u.torso, 0, 0.3, 0.36, 0.7, 0.3, 0.2);
+    mesh(G_STAR, gold, u.torso, 0, 0.16, 0.38, 0.17, 0.17, 0.3);
+    mesh(G_CYL, white, u.torso, 0, -0.3, 0, 0.5, 0.13, 0.5); mesh(G_BOX, gold, u.torso, 0, -0.3, 0.47, 0.24, 0.18, 0.08);
+    for (const s of [-1, 1]) mesh(G_SPH, white, u.torso, s * 0.5, 0.32, 0, 0.17, 0.15, 0.17);
+    u.cape = grp(u.torso, 0, 0.42, -0.36); mesh(G_BOX, toon(new THREE.Color(col).multiplyScalar(0.62)), u.cape, 0, -0.55, 0, 0.92, 1.15, 0.06);
+    u.head = grp(g, 0, u.hy, 0);
+    mesh(G_SPH, u.suit, u.head, 0, 0, 0, 0.5, 0.52, 0.5);
+    mesh(G_SPH, black, u.head, 0, -0.02, 0.18, 0.42, 0.3, 0.38);   // 黒いバイザー
+    mesh(G_BOX, glow(0x9fe8ff), u.head, 0.12, 0.07, 0.53, 0.18, 0.04, 0.02);
+    mesh(G_BOX, toon(0xdfe3ee), u.head, 0, 0.42, 0, 0.08, 0.2, 0.6);   // 頭のトサカ
+    mesh(G_BOX, toon(0xdfe3ee), u.head, 0, -0.3, 0.32, 0.3, 0.12, 0.12);
+    u.hL = grp(g); mesh(G_SPH, white, u.hL, 0, 0, 0, 0.2, 0.2, 0.2);
+    u.hR = grp(g); mesh(G_SPH, white, u.hR, 0, 0, 0, 0.2, 0.2, 0.2);
+  } else {
+    const dark = toon(new THREE.Color(col).multiplyScalar(0.55)), bone = toon(0xe9dcc0), eye = glow(0xff2a2a), belly = glow(hi);
+    u.ty = 0.78; u.hy = 1.42;
+    for (const s of [-1, 1]) { const l = mesh(G_CYL, dark, g, s * 0.3, 0.32, -0.05, 0.22, 0.6, 0.22); l.rotation.x = 0.25; for (const c of [-0.1, 0.1]) mesh(G_CONE, bone, g, s * 0.3 + c, 0.06, 0.24, 0.06, 0.18, 0.06).rotation.x = Math.PI / 2; }
+    u.torso = grp(g, 0, u.ty, 0); u.torso.rotation.x = 0.38;   // 前かがみ
+    mesh(new THREE.CapsuleGeometry(0.55, 0.4, 4, 10), u.suit, u.torso, 0, 0, 0, 1.08, 1, 0.95);
+    mesh(G_SPH, belly, u.torso, 0, -0.05, 0.4, 0.3, 0.38, 0.16);   // 光る腹
+    for (const s of [-1, 1]) { mesh(G_SPH, dark, u.torso, s * 0.58, 0.3, 0, 0.3, 0.26, 0.3); for (let i = 0; i < 3; i++) { const sp = mesh(G_CONE, bone, u.torso, s * (0.6 + i * 0.06), 0.52 + (i === 1 ? 0.08 : 0), -0.12 + i * 0.12, 0.09, 0.38, 0.09); sp.rotation.z = -s * 0.6; } }
+    for (let i = 0; i < 4; i++) mesh(G_CONE, bone, u.torso, 0, 0.45 - i * 0.26, -0.5, 0.08, 0.3, 0.08).rotation.x = -1.3;   // 背中のトゲ
+    u.tail = grp(g, 0, 0.55, -0.45);
+    for (let i = 0; i < 4; i++) { mesh(G_SPH, u.suit, u.tail, 0, -i * 0.08, -i * 0.26, 0.2 - i * 0.04, 0.2 - i * 0.04, 0.24); mesh(G_CONE, bone, u.tail, 0, 0.14 - i * 0.08, -i * 0.26, 0.05, 0.18, 0.05); }
+    u.head = grp(g, 0, u.hy, 0.38);
+    mesh(G_SPH, u.suit, u.head, 0, 0, 0, 0.42, 0.36, 0.46);
+    mesh(G_BOX, dark, u.head, 0, -0.2, 0.18, 0.5, 0.14, 0.42);   // あご
+    for (let i = -2; i <= 2; i++) mesh(G_CONE, bone, u.head, i * 0.09, -0.15, 0.38, 0.035, 0.12, 0.035).rotation.x = Math.PI;   // 牙
+    for (const s of [-1, 1]) {
+      mesh(G_SPH, eye, u.head, s * 0.17, 0.08, 0.36, 0.1, 0.06, 0.06);
+      mesh(G_BOX, dark, u.head, s * 0.17, 0.16, 0.36, 0.2, 0.05, 0.08).rotation.z = s * 0.4;   // 怒った眉
+      const h = mesh(G_CONE, bone, u.head, s * 0.32, 0.36, -0.05, 0.11, 0.55, 0.11); h.rotation.z = -s * 0.7; h.rotation.x = -0.35;
+    }
+    const claws = p => { mesh(G_SPH, dark, p, 0, 0, 0, 0.22, 0.2, 0.22); for (let i = -1; i <= 1; i++) mesh(G_CONE, bone, p, i * 0.09, -0.05, 0.2, 0.04, 0.22, 0.04).rotation.x = 1.9; };
+    u.hL = grp(g); claws(u.hL); u.hR = grp(g); claws(u.hR);
+  }
   u.shadow = mesh(new THREE.CircleGeometry(0.75, 16), glow(0x000000, { transparent: true, opacity: 0.3, depthWrite: false }), g, 0, 0.03, 0); u.shadow.rotation.x = -Math.PI / 2;
   g.userData = u; return g;
 }
 function poseFigure(f, walk, carrying, punch, dizzy, t) {
-  const u = f.userData, b = Math.abs(Math.sin(walk)) * 0.18;
-  u.torso.position.y = 0.8 + b; u.head.position.y = 1.72 + b; u.head.rotation.z = dizzy ? Math.sin(t * 14) * 0.3 : 0;
+  const u = f.userData, b = Math.abs(Math.sin(walk)) * 0.16, k = u.team, sw = Math.sin(walk);
+  u.torso.position.y = u.ty + b; u.head.position.y = u.hy + b; u.head.rotation.z = dizzy ? Math.sin(t * 14) * 0.3 : 0;
+  if (u.cape) u.cape.rotation.x = 0.12 + Math.abs(sw) * 0.35;
+  if (u.tail) { u.tail.rotation.y = Math.sin(walk * 0.5 + t * 2) * 0.45; u.tail.rotation.x = -0.15; }
+  const sx = k ? 0.78 : 0.68, hy = k ? 0.78 : 0.88, fz = k ? 0.32 : 0.1;
   if (carrying) { u.hL.position.set(-0.55, 2.3, 0); u.hR.position.set(0.55, 2.3, 0); }
-  else if (punch > 0) { u.hL.position.set(-0.7, 0.9, 0.1); u.hR.position.set(0.35, 1.1, 1.2); }
-  else { const s = Math.sin(walk) * 0.35; u.hL.position.set(-0.7, 0.85 + b, s); u.hR.position.set(0.7, 0.85 + b, -s); }
+  else if (punch > 0) { u.hL.position.set(-sx, hy, fz); u.hR.position.set(0.35, hy + 0.25, 1.2); }
+  else { const s = sw * 0.35; u.hL.position.set(-sx, hy + b, fz + s); u.hR.position.set(sx, hy + b, fz - s); }
 }
 function makeCitizen() {
   const g = new THREE.Group(), u = {};
@@ -318,7 +361,7 @@ export function createRenderer(canvas) {
   });
   // 前半戦のキャラ
   const p1Figs = [], p1Marks = [];
-  for (let s = 0; s < 8; s++) { const f = makeFigure(SLOT_COL[s], s < 4 ? 0 : 1); f.scale.setScalar(1.15); city.add(f); shadowAll(f); f.userData.shadow.castShadow = false; p1Figs.push(f); const mk = mesh(new THREE.RingGeometry(1.25, 1.6, 24), glow(0xffc531, { transparent: true, opacity: 0.95, depthWrite: false }), city); mk.rotation.x = -Math.PI / 2; mk.visible = false; p1Marks.push(mk); }
+  for (let s = 0; s < NS; s++) { const f = makeFigure(s); f.scale.setScalar(1.15); city.add(f); shadowAll(f); f.userData.shadow.castShadow = f.userData.ring.castShadow = false; p1Figs.push(f); const mk = mesh(new THREE.RingGeometry(1.25, 1.6, 24), glow(0xffc531, { transparent: true, opacity: 0.95, depthWrite: false }), city); mk.rotation.x = -Math.PI / 2; mk.visible = false; p1Marks.push(mk); }
   const bubbleMat = glow(0x38d6c4, { transparent: true, opacity: 0.28, depthWrite: false });
   for (const f of p1Figs) { f.userData.bubble = mesh(G_SPH, bubbleMat, f, 0, 1.3, 0, 1.9, 1.9, 1.9); f.userData.bubble.visible = false; }
   const slimePool = []; for (let i = 0; i < 4; i++) { const m = mesh(new THREE.CircleGeometry(1, 24), glow(0x7bd34a, { transparent: true, opacity: 0.55, depthWrite: false }), city, 0, 0.11, 0); m.rotation.x = -Math.PI / 2; m.visible = false; slimePool.push(m); }
@@ -415,8 +458,8 @@ export function createRenderer(canvas) {
     o.pump = grp(s, 0, 1.7, 0); mesh(G_CYL, metal, o.pump, 0, 0.5, 0, 0.12, 1.2, 0.12); mesh(G_BOX, toon(k ? 0xff5af0 : 0xff5a4f), o.pump, 0, 1.1, 0, 1.4, 0.25, 0.3);
     // 乗組員・アイテム・トラブル
     o.crew = []; o.marks = []; o.carry = [];
-    for (let i = 0; i < 4; i++) {
-      const f = makeFigure(SLOT_COL[team * 4 + i], team); root.add(f); o.crew.push(f);
+    for (let i = 0; i < TN; i++) {
+      const f = makeFigure(team * TN + i); root.add(f); o.crew.push(f);
       const mk = mesh(new THREE.RingGeometry(0.95, 1.25, 24), glow(0xffc531, { transparent: true, opacity: 0.95, depthWrite: false }), root); mk.rotation.x = -Math.PI / 2; mk.visible = false; o.marks.push(mk);
       const it = makeItem(k); it.visible = false; root.add(it); o.carry.push(it);
     }
@@ -444,7 +487,7 @@ export function createRenderer(canvas) {
   }
   function syncP1(G, view, dt, show) {
     const P = G && G.p1;
-    for (let s = 0; s < 8; s++) {
+    for (let s = 0; s < NS; s++) {
       const f = p1Figs[s], mk = p1Marks[s]; f.visible = !!(show && P); mk.visible = false; if (!f.visible) continue;
       const c = P.chars[s]; f.position.set(c.x, 0, c.z); f.rotation.y = c.fa;
       const sp = Math.hypot(c.vx || 0, c.vz || 0), lx = f.userData.lx === undefined ? c.x : f.userData.lx, lz = f.userData.lz === undefined ? c.z : f.userData.lz;
@@ -619,13 +662,13 @@ export function createRenderer(canvas) {
       let mode = 'top';
       if (phase === 'title') { const a = time * 0.12; camC.fov = 34; setCam(camC, Math.sin(a) * 30, 20 + Math.sin(a * 0.7) * 3, 96, 0, 15, 0, 0); mode = 'side'; }
       else if (phase === 'p1' || phase === 'trans') {
-        const P = G.p1; let cx = 0, cz = 0, n = 0, spread = 0; const L = view.locals.length ? view.locals : [0, 1, 2, 3, 4, 5, 6, 7];
+        const P = G.p1; let cx = 0, cz = 0, n = 0, spread = 0; const L = view.locals.length ? view.locals : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         for (const s of L) { cx += P.chars[s].x; cz += P.chars[s].z; n++; } cx /= n; cz /= n;
         for (const s of L) spread = Math.max(spread, Math.abs(P.chars[s].x - cx) / 1.7, Math.abs(P.chars[s].z - cz));
         const zoom = view.locals.length ? clamp(spread / 14, 1, 2.6) : 2.4;
         const k = Math.min(1, dt * 5); camState.x = lerp(camState.x, clamp(cx, -66, 66), k); camState.z = lerp(camState.z, clamp(cz, -40, 40), k); camState.zoom = lerp(camState.zoom, zoom, Math.min(1, dt * 3));
         const px = camState.x, pz = camState.z, z = camState.zoom;
-        if (phase === 'p1') { camC.fov = 40; setCam(camC, px, 40 * z, pz + 20 * z, px, 0, pz - 1.5, shakeC); }
+        if (phase === 'p1') { camC.fov = 40; if (api.dbgCam) setCam(camC, ...api.dbgCam, 0); else setCam(camC, px, 40 * z, pz + 20 * z, px, 0, pz - 1.5, shakeC); }
         else {
           const p = ease(clamp((8.8 - G.tr.t) / 2.2, 0, 1)); camC.fov = lerp(40, 38, p);
           setCam(camC, lerp(px, 0, p), lerp(40 * z, 21, p), lerp(pz + 20 * z, 112, p), lerp(px, 0, p), lerp(0, 15, p), lerp(pz - 1.5, 0, p), shakeC); if (p > 0.4) mode = 'side';

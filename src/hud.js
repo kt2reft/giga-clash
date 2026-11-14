@@ -1,12 +1,24 @@
 // =====================================================================
 // GIGA-CLASH  hud.js — 2Dオーバーレイ（HUD・メニュー・タッチ操作の表示）
 // =====================================================================
-import { CHARS, charOf, THEME, ZKEYS, ZONES, ZONE_EFF, ST, CON, CITY, BASE_INFO, CARDS, TEAM_NAME, TEAM_COL, SLOT_COL, DIFF, BAL, pilotOf, zoneOff, promptFor, crewNavi, chargerOpen, BATTLE_TIME } from './sim.js';
+import { TN, NS, teamOf, CHARS, charOf, THEME, ZKEYS, ZONES, ZONE_EFF, ST, CON, CITY, BASE_INFO, CARDS, TEAM_NAME, TEAM_COL, SLOT_COL, DIFF, BAL, pilotOf, zoneOff, promptFor, crewNavi, chargerOpen, BATTLE_TIME } from './sim.js';
 import { W, H, EXT_H } from './render3d.js';
 
 const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Noto Sans CJK JP","Yu Gothic","Meiryo",sans-serif';
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
+// コントローラーの種類ごとのボタン表記（ボタンの位置はXbox配置の名前で指定：A=下、B=右、X=左、Y=上）
+export const PADL = {
+  xbox: { name: 'Xbox', A: 'Ⓐ', B: 'Ⓑ', X: 'Ⓧ', Y: 'Ⓨ', L1: 'LB', R1: 'RB', L2: 'LT', R2: 'RT', sel: 'View', st: 'Menu', col: { A: '#5cc86a', B: '#ee4b4b', X: '#3f8cff', Y: '#ffc531' } },
+  ps: { name: 'PlayStation', A: '✕', B: '○', X: '□', Y: '△', L1: 'L1', R1: 'R1', L2: 'L2', R2: 'R2', sel: 'Create', st: 'Options', col: { A: '#7fa8ff', B: '#ff6f6f', X: '#ff8fd0', Y: '#4fe0b0' } },
+  sw: { name: 'Nintendo Switch', A: 'Ⓑ', B: 'Ⓐ', X: 'Ⓨ', Y: 'Ⓧ', L1: 'L', R1: 'R', L2: 'ZL', R2: 'ZR', sel: '−', st: '＋', col: { A: '#d9dde8', B: '#d9dde8', X: '#d9dde8', Y: '#d9dde8' } },
+};
+export function padKind(id = '') {
+  const s = String(id).toLowerCase();
+  if (/054c|playstation|dualshock|dualsense|wireless controller|ps[345]/.test(s)) return 'ps';
+  if (/057e|nintendo|pro controller|joy-con|switch/.test(s)) return 'sw';
+  return 'xbox';
+}
 const ITEM_COL = [{ coal: '#55555f', mN: '#ff5a4f', mH: '#3fa9ff', mS: '#ffd23f' }, { coal: '#9b5cff', mN: '#9be36d', mH: '#3fe0d0', mS: '#ffd23f' }];
 
 export function createHud(ctx, R) {
@@ -32,11 +44,21 @@ export function createHud(ctx, R) {
     ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 24 * scale, 0, 7); ctx.stroke();
     ctx.strokeStyle = Math.abs(rt - 1) < 0.09 ? '#ffd23f' : '#ff9a3c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(x, y, Math.max(4, r), 0, 7); ctx.stroke();
   }
-  function face(col, x, y, s = 1) {
-    ctx.fillStyle = '#e8ecf5'; ctx.beginPath(); ctx.arc(x, y, 15 * s, 0, 7); ctx.fill();
-    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y - 3 * s, 14 * s, Math.PI, 0); ctx.fill(); ctx.fillRect(x - 14 * s, y - 3 * s, 28 * s, 5 * s);
-    ctx.fillStyle = '#1a1d2e'; rr(x - 9 * s, y - 1 * s, 18 * s, 8 * s, 4 * s); ctx.fill(); ctx.fillStyle = '#7fe8ff'; ctx.fillRect(x - 6 * s, y + 1 * s, 4 * s, 3 * s); ctx.fillRect(x + 3 * s, y + 1 * s, 4 * s, 3 * s);
-    ctx.strokeStyle = '#1a1d2e'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, 15 * s, 0, 7); ctx.stroke();
+  // 顔アイコン：ヒーローはヘルメット＋黒バイザー、怪人は角と赤い目
+  function face(col, x, y, s = 1, team = 0) {
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#1a1d2e';
+    if (team === 0) {
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 15 * s, 0, 7); ctx.fill();
+      ctx.fillStyle = '#0d0f18'; ctx.beginPath(); ctx.moveTo(x - 11 * s, y - 3 * s); ctx.lineTo(x + 11 * s, y - 3 * s); ctx.lineTo(x + 9 * s, y + 3 * s); ctx.lineTo(x + 3 * s, y + 3 * s); ctx.lineTo(x + 3 * s, y + 10 * s); ctx.lineTo(x - 3 * s, y + 10 * s); ctx.lineTo(x - 3 * s, y + 3 * s); ctx.lineTo(x - 9 * s, y + 3 * s); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#9fe8ff'; ctx.fillRect(x + 2 * s, y - 2 * s, 6 * s, 1.6 * s);
+      ctx.fillStyle = '#eef1ff'; ctx.fillRect(x - 1.5 * s, y - 15 * s, 3 * s, 8 * s);
+      ctx.beginPath(); ctx.arc(x, y, 15 * s, 0, 7); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#e9dcc0'; for (const d of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + d * 8 * s, y - 9 * s); ctx.lineTo(x + d * 19 * s, y - 22 * s); ctx.lineTo(x + d * 13 * s, y - 6 * s); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x - 14 * s, y - 6 * s); ctx.quadraticCurveTo(x, y - 20 * s, x + 14 * s, y - 6 * s); ctx.lineTo(x + 11 * s, y + 10 * s); ctx.lineTo(x, y + 15 * s); ctx.lineTo(x - 11 * s, y + 10 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ff2a2a'; for (const d of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + d * 2 * s, y - 1 * s); ctx.lineTo(x + d * 10 * s, y - 5 * s); ctx.lineTo(x + d * 8 * s, y + 1 * s); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = '#e9dcc0'; for (const d of [-4, 0, 4]) { ctx.beginPath(); ctx.moveTo(x + (d - 2) * s, y + 6 * s); ctx.lineTo(x + (d + 2) * s, y + 6 * s); ctx.lineTo(x + d * s, y + 10 * s); ctx.closePath(); ctx.fill(); }
+    }
   }
 
   const S = { banners: [], pops: [], cutin: null, bubbles: [], t: 0 };
@@ -192,7 +214,7 @@ export function createHud(ctx, R) {
         if (can) hud.button('card' + i, x, y0, 250, 104, '', '#ffd23f');
         else { rr(x, y0, 250, 104, 14); ctx.fillStyle = picked ? '#ffd23f' : '#2a3148'; ctx.fill(); ctx.strokeStyle = picked ? '#fff' : '#4a5577'; ctx.lineWidth = 3; ctx.stroke(); }
         const dark = picked || can;
-        text((can ? (view.dev === 'pad' ? ['Ⓧ ', 'Ⓨ ', 'Ⓑ '][i] : view.dev === 'kb' ? `[${i + 1}] ` : '') : '') + c.name, x + 125, y0 + 36, 24, dark ? '#11131f' : '#cfd6ff');
+        text((can ? view.key.cards[i] : '') + c.name, x + 125, y0 + 36, 24, dark ? '#11131f' : '#cfd6ff');
         text(c.desc, x + 125, y0 + 76, 12, dark ? '#2a2d40' : '#9fb2e6', 'center', 'normal');
         ctx.globalAlpha = 1;
       });
@@ -271,7 +293,7 @@ export function createHud(ctx, R) {
       const c = T.crew.find(x => x.slot === me[0]);
       let nv = c && crewNavi(G, T, c);
       if (c && c.role === 'pilot' && live && G.cd <= 0) {
-        const msg = c.fat > 75 ? `疲れてきた！ ${view.dev === 'pad' ? 'Back' : view.dev === 'touch' ? '「脱出」' : 'X'} で仲間と交代` : T.g.sp >= 100 && !G.sp ? `必殺技OK！ ${view.key.s} で発動` : (Math.floor(S.t / 5) % 2 ? `${view.key.j}でジャンプ！ 相手を飛び越えて回り込める（強攻撃は対空になる）` : `${view.dev === 'pad' ? 'Ⓧ' : view.dev === 'touch' ? '「弱」' : 'J'}連打でコンボ／敵の攻撃の直前にガードでジャストガード`);
+        const msg = c.fat > 75 ? `疲れてきた！ ${view.key.e} で仲間と交代` : T.g.sp >= 100 && !G.sp ? `必殺技OK！ ${view.key.s} で発動` : (Math.floor(S.t / 5) % 2 ? `${view.key.j}でジャンプ！ 相手を飛び越えて回り込める（強攻撃は対空になる）` : `${view.key.x}連打でコンボ／敵の攻撃の直前にガードでジャストガード`);
         const w = tw(msg, 16) + 36; rr(W / 2 - w / 2, EXT_H + 26, w, 32, 10); ctx.fillStyle = 'rgba(40,32,8,.9)'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); text(msg, W / 2, EXT_H + 42, 16, '#ffe9a8');
       }
       if (nv) {
@@ -290,7 +312,7 @@ export function createHud(ctx, R) {
     // ---- 自分への操作ガイド
     me.forEach((s, li) => {
       const c = T.crew.find(x => x.slot === s); if (!c || c.role === 'pilot' || c.escaped || !(live || esc)) return;
-      const pr = promptFor(G, T, c), q = R.projI(c.x, c.y + 30), key = li === 0 ? view.key : view.keyPad;
+      const pr = promptFor(G, T, c), q = R.projI(c.x, c.y + 30), key = (view.keyPads && view.keyPads[li]) || (li === 0 ? view.key : view.keyPad);
       if (pr) label((pr.startsWith('長押し') ? key.aHold : key.a) + ' ' + pr.replace('長押し：', ''), q.x, q.y + 6, 14, '#ffe9a8', 'rgba(10,12,24,.88)', SLOT_COL[s]);
       else if (c.carry) label(li === 0 && view.dev === 'touch' ? '「投げる」ボタンで放り投げ' : `${key.b} 投げる　${key.a} 置く`, q.x, q.y + 6, 13, '#cfd6ff', 'rgba(10,12,24,.75)');
     });
@@ -332,7 +354,7 @@ export function createHud(ctx, R) {
     const slot = view.locals[0], ch = charOf(slot), cd = G.skcd[slot] || 0;
     let line = null, total = 1;
     if (G.phase === 'p1' && G.cd <= 0) { line = ch.p1; total = ch.cd1; }
-    else if (G.phase === 'p2' && G.cd <= 0) { const T = G.teams[slot < 4 ? 0 : 1], c = T.crew[slot % 4]; if (c && c.role !== 'pilot' && !c.escaped) { line = ch.p2; total = ch.cd2; } }
+    else if (G.phase === 'p2' && G.cd <= 0) { const T = G.teams[teamOf(slot)], c = T.crew[slot % TN]; if (c && c.role !== 'pilot' && !c.escaped) { line = ch.p2; total = ch.cd2; } }
     if (!line) return;
     const x = G.phase === 'p2' ? W / 2 - 180 : 18, y = G.phase === 'p2' ? H - 60 : H - 66, ready = cd <= 0, [nm, desc] = line.split('：');
     rr(x, y, 360, 52, 12); ctx.fillStyle = 'rgba(8,10,22,.86)'; ctx.fill(); ctx.strokeStyle = ready ? '#7dffb0' : '#4a5577'; ctx.lineWidth = 2; ctx.stroke();
@@ -375,17 +397,17 @@ export function createHud(ctx, R) {
     r.awards.forEach((a, i) => {
       const x = x0 + i * (cw + gap), y = 132, sl = G.slots[a.slot];
       rr(x, y, cw, 112, 16); ctx.fillStyle = '#161b33'; ctx.fill(); ctx.strokeStyle = i >= 3 ? '#ff9af0' : '#ffd23f'; ctx.lineWidth = 3; ctx.stroke();
-      text(a.title, x + cw / 2, y + 24, 17, i >= 3 ? '#ff9af0' : '#ffd23f'); face(sl.col, x + 44, y + 70, 1.3);
+      text(a.title, x + cw / 2, y + 24, 17, i >= 3 ? '#ff9af0' : '#ffd23f'); face(sl.col, x + 44, y + 70, 1.3, teamOf(a.slot));
       text(sl.name, x + 78, y + 62, 20, sl.col, 'left'); text(a.note, x + 78, y + 88, 12, '#cfd6ff', 'left', 'normal');
     });
     const y0 = 256; rr(60, y0, W - 120, 322, 14); ctx.fillStyle = 'rgba(22,27,51,.92)'; ctx.fill();
     const cols = ['名前', '与ダメージ', '飛び道具', '燃料', '装填', '修理', 'PERFECT', '転倒', '市民', '拠点', 'スコア'];
     cols.forEach((c, i) => text(c, 160 + i * 98, y0 + 22, 13, i === 10 ? '#ffd23f' : '#9fb2e6'));
-    for (let s = 0; s < 8; s++) {
-      const y = y0 + 52 + s * 33 + (s >= 4 ? 8 : 0), st = r.st[s], sl = G.slots[s];
-      if (view.locals.includes(s)) { rr(70, y - 14, W - 140, 28, 8); ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill(); }
-      ctx.fillStyle = TEAM_COL[s < 4 ? 0 : 1]; ctx.fillRect(74, y - 11, 5, 22);
-      text(sl.name + (sl.human ? '' : '（Bot）'), 160, y, 15, sl.col); st.forEach((v, i) => text(String(v), 258 + i * 98, y, 15, '#e8ecff')); if (r.score) text(String(r.score[s]), 160 + 10 * 98, y, 15, '#ffd23f');
+    for (let s = 0; s < NS; s++) {
+      const y = y0 + 48 + s * 26.5 + (s >= TN ? 6 : 0), st = r.st[s], sl = G.slots[s];
+      if (view.locals.includes(s)) { rr(70, y - 12, W - 140, 24, 7); ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill(); }
+      ctx.fillStyle = TEAM_COL[teamOf(s)]; ctx.fillRect(74, y - 10, 5, 20);
+      text(sl.name + (sl.human ? '' : '（Bot）'), 160, y, 14, sl.col); st.forEach((v, i) => text(String(v), 258 + i * 98, y, 14, '#e8ecff')); if (r.score) text(String(r.score[s]), 160 + 10 * 98, y, 14, '#ffd23f');
     }
     if (r.score && view.locals.length) {
       const sc = r.score[view.locals[0]];
@@ -417,9 +439,9 @@ export function createHud(ctx, R) {
     const g2 = ctx.createLinearGradient(0, 420, 0, H); g2.addColorStop(0, 'rgba(8,6,24,0)'); g2.addColorStop(1, 'rgba(8,6,24,.8)'); ctx.fillStyle = g2; ctx.fillRect(0, 420, W, 300);
     ctx.save(); ctx.translate(W / 2, 110); ctx.rotate(-0.04);
     text('GIGA-CLASH', 0, 0, 104, '#ffd23f', 'center', 'bold', '#11131f', 14); text('ギガ・クラッシュ', 0, 68, 30, '#fff', 'center', 'bold', '#11131f', 6); ctx.restore();
-    text('街で守れ。そして、乗り込め。― 4人で1体の巨大ロボ／大怪獣を動かす特撮パーティーアクション', W / 2, 222, 18, '#ffe9a8', 'center', 'bold', 'rgba(0,0,0,.8)', 5);
+    text('街で守れ。そして、乗り込め。― 5人で1体の巨大ロボ／大怪獣を動かす特撮パーティーアクション', W / 2, 222, 18, '#ffe9a8', 'center', 'bold', 'rgba(0,0,0,.8)', 5);
     hud.button('solo', W / 2 - 320, 470, 300, 76, 'あそぶ', '#ffd23f', 'ひとり・同じ画面でみんなと');
-    hud.button('online', W / 2 + 20, 470, 300, 76, 'オンライン', ui.online ? '#7fd6ff' : '#6b7391', ui.online ? 'ヒーロー vs 怪人（最大8人）' : ui.onlineWhy);
+    hud.button('online', W / 2 + 20, 470, 300, 76, 'オンライン', ui.online ? '#7fd6ff' : '#6b7391', ui.online ? 'ヒーロー vs 怪人（最大10人）' : ui.onlineWhy);
     hud.button('help', W / 2 - 320, 562, 300, 52, '遊び方', '#cfe3ff', '', 20);
     hud.button('mute', W / 2 + 20, 562, 142, 52, ui.muted ? '音：OFF' : '音：ON', '#9aa3c7', '', 18);
     hud.button('gfx', W / 2 + 178, 562, 142, 52, ui.low ? '画質：軽い' : '画質：きれい', '#9aa3c7', '', 18);
@@ -427,43 +449,138 @@ export function createHud(ctx, R) {
     text(`ver ${ui.ver}`, W - 14, H - 14, 12, 'rgba(220,226,255,.6)', 'right', 'normal');
     if (ui.newVer) hud.button('reload', W - 330, 14, 316, 50, `新しいバージョン ${ui.newVer}`, '#7dffb0', '押すと再読み込みします', 16);
   }
-  function drawHelp(page) {
+  // ---------------------------------------------------------------- 遊び方・操作マニュアル
+  function keycap(k, x, y, col = '#e8ecff', wmin = 34) {
+    const w = Math.max(wmin, tw(k, 15) + 16); rr(x, y - 15, w, 30, 6); ctx.fillStyle = '#2a3156'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(x + 3, y - 12, w - 6, 8); text(k, x + w / 2, y + 1, 15, col); return w;
+  }
+  // 「キー列 → 説明」を1行で描く。keys は配列（間に「/」が入る）
+  function keyRow(keys, desc, x, y, colFn, dx = 120) {
+    let cx = x; keys.forEach((k, i) => { if (i) { text('/', cx + 7, y, 14, '#8a93b5'); cx += 14; } cx += keycap(k, cx, y, colFn ? colFn(k) : '#e8ecff') + 4; });
+    text(desc, Math.max(cx + 10, x + dx), y, 15, '#e8ecff', 'left', 'normal');
+  }
+  function padIcon(P, pos, x, y, r = 15) {   // pos: A/B/X/Y
+    ctx.fillStyle = '#1b2040'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.strokeStyle = P.col[pos]; ctx.lineWidth = 2.5; ctx.stroke();
+    text(P[pos], x, y + 1, r * 1.05, P.col[pos]);
+  }
+  function drawPadDiagram(P, cx, cy) {
+    ctx.save(); ctx.translate(cx, cy);
+    // 本体
+    ctx.fillStyle = '#2a3156'; ctx.strokeStyle = '#8a93b5'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-150, -48); ctx.quadraticCurveTo(0, -70, 150, -48); ctx.quadraticCurveTo(205, -30, 210, 40); ctx.quadraticCurveTo(215, 110, 170, 118); ctx.quadraticCurveTo(130, 120, 95, 60); ctx.lineTo(-95, 60); ctx.quadraticCurveTo(-130, 120, -170, 118); ctx.quadraticCurveTo(-215, 110, -210, 40); ctx.quadraticCurveTo(-205, -30, -150, -48); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 肩ボタン
+    for (const d of [-1, 1]) { rr(d < 0 ? -190 : 110, -84, 80, 22, 8); ctx.fillStyle = '#3a4270'; ctx.fill(); ctx.stroke(); rr(d < 0 ? -182 : 118, -110, 64, 22, 8); ctx.fill(); ctx.stroke(); }
+    text(`${P.L1}`, -150, -73, 13, '#ffe9a8'); text(`${P.R1}`, 150, -73, 13, '#ffe9a8'); text(`${P.L2}`, -150, -99, 12, '#cfd6ff'); text(`${P.R2}`, 150, -99, 12, '#cfd6ff');
+    // スティックと十字キー
+    ctx.fillStyle = '#151a33'; ctx.beginPath(); ctx.arc(-130, 0, 30, 0, 7); ctx.fill(); ctx.fillStyle = '#4a5280'; ctx.beginPath(); ctx.arc(-130, 0, 18, 0, 7); ctx.fill();
+    ctx.fillStyle = '#151a33'; ctx.fillRect(-82, 42, 40, 14); ctx.fillRect(-69, 29, 14, 40);
+    // 選択・スタート
+    rr(-40, -20, 28, 14, 7); ctx.fillStyle = '#151a33'; ctx.fill(); rr(12, -20, 28, 14, 7); ctx.fill();
+    text(P.sel, -26, -36, 11, '#cfd6ff'); text(P.st, 26, -36, 11, '#cfd6ff');
+    // 右スティック（使わない）
+    ctx.fillStyle = '#151a33'; ctx.beginPath(); ctx.arc(62, 48, 22, 0, 7); ctx.fill();
+    // ABXY（位置どおり）
+    padIcon(P, 'Y', 135, -32); padIcon(P, 'X', 103, 0); padIcon(P, 'B', 167, 0); padIcon(P, 'A', 135, 32);
+    text('移動', -130, 44, 12, '#cfd6ff'); text('移動', -62, 84, 11, '#cfd6ff');
+    ctx.restore();
+  }
+  // 画面の右下（ボタンがある所）を拡大して描く
+  function drawPhone(L, title, x, y, sc) {
+    const X0 = 860, Y0 = 420, w = 420 * sc, h = 300 * sc;
+    ctx.save(); rr(x, y, w, h, 16); ctx.fillStyle = '#20284a'; ctx.fill(); ctx.clip();
+    for (const b of L) { const bx = x + (b.x - X0) * sc, by = y + (b.y - Y0) * sc; ctx.fillStyle = b.col || '#e8ecff'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.arc(bx, by, b.r * sc, 0, 7); ctx.fill(); ctx.globalAlpha = 1; text(b.label, bx, by, b.r * sc > 30 ? 15 : 12, '#11131f'); }
+    ctx.restore(); rr(x, y, w, h, 16); ctx.strokeStyle = '#8a93b5'; ctx.lineWidth = 2; ctx.stroke();
+    text(title, x + w / 2, y - 18, 17, '#ffe9a8'); text('（画面の右下）', x + w / 2, y + h + 16, 12, '#8a93b5', 'center', 'normal');
+  }
+  const TL = {
+    p1: [{ x: 1150, y: 610, r: 62, label: 'かつぐ' }, { x: 1010, y: 652, r: 46, label: 'パンチ' }, { x: 1070, y: 520, r: 44, label: '投げる' }, { x: 1200, y: 470, r: 40, label: 'スキル', col: '#7dffb0' }],
+    crew: [{ x: 1150, y: 620, r: 62, label: '作業' }, { x: 1015, y: 660, r: 44, label: '投げる' }, { x: 1200, y: 470, r: 40, label: 'スキル', col: '#7dffb0' }],
+    pilot: [{ x: 1050, y: 630, r: 50, label: '弱' }, { x: 1170, y: 560, r: 50, label: '強' }, { x: 1175, y: 670, r: 42, label: 'ガード' }, { x: 930, y: 665, r: 40, label: '飛び道具' }, { x: 930, y: 565, r: 44, label: '必殺', col: '#ffd23f' }, { x: 1222, y: 446, r: 30, label: '脱出', col: '#ff8a80' }, { x: 1060, y: 500, r: 44, label: 'ジャンプ', col: '#9fe8ff' }],
+  };
+  const HELP_TABS = ['試合の流れ', '機体の中', 'キーボード', 'コントローラー', 'スマホ'];
+  function drawHelp(page, opt = {}) {
     hud.buttons = [];
-    ctx.fillStyle = 'rgba(5,6,14,.93)'; ctx.fillRect(0, 0, W, H); rr(90, 30, W - 180, H - 60, 20); ctx.fillStyle = '#161b33'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3; ctx.stroke();
-    const P = [
-      ['遊び方 1/3 ― 試合の流れ', [
-        ['チーム', 'ヒーロー4人 vs 怪人4人。人がいない席はBotが入る。'],
+    ctx.fillStyle = 'rgba(5,6,14,.93)'; ctx.fillRect(0, 0, W, H); rr(70, 22, W - 140, H - 44, 20); ctx.fillStyle = '#161b33'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3; ctx.stroke();
+    HELP_TABS.forEach((t, i) => hud.button('help' + i, 100 + i * 218, 36, 206, 42, t, i === page ? '#ffd23f' : '#5b6488', '', 17));
+    const rows = R0 => { const sp = R0.length > 7 ? 54 : 60; R0.forEach((l, i) => { text(l[0], 120, 150 + i * sp, 18, '#ffe9a8', 'left'); text(l[1], 280, 150 + i * sp, 16, '#e8ecff', 'left', 'normal'); }); };
+    if (page === 0) {
+      text('遊び方 ― 試合の流れ', W / 2, 106, 26, '#ffd23f');
+      rows([
+        ['チーム', 'ヒーロー5人 vs 怪人5人。人がいない席はBotが入る。'],
         ['前半戦(2分)', '街で市民を奪い合い、5つの拠点を取り合う「シティー・スクランブル」。'],
         ['市民', 'かついで自分のゴールへ。ヒーローはシェルター、怪人はダークゲート。投げ入れてもOK。'],
         ['拠点', '輪の中に立つと確保。敵がいると止まる。取った拠点は後半戦の機体を強化する。'],
-        ['パンチ', '相手を殴ると少しの間ダウンし、かついだ市民を落とす。'],
+        ['見分け方', 'ヒーローは足元に水色の輪、怪人は赤紫の輪。自分は黄色の輪で目立つ。'],
         ['逆境カード', '前半で負けた側は、後半を有利にするカードを1枚選べる。先に巨大化もできる。'],
-        ['キャラ', '8人それぞれに固有スキル（I / Ⓨ）がある。ロビーの「キャラ」で選べる。前半戦と裏方で効果が変わる。'],
-        ['後半戦(3分)', '巨大ロボ vs 大怪獣。1人が操縦、3人が内部で裏方。相手のHPを0にしたら勝ち。'],
-      ]],
-      ['遊び方 2/3 ― 後半戦（機体の中）', [
+        ['キャラ', '10人それぞれに固有スキルがある。ロビーの「キャラ」で選べる。前半戦と裏方で効果が変わる。'],
+        ['後半戦(3分)', '巨大ロボ vs 大怪獣。1人が操縦、4人が内部で裏方。相手のHPを0にしたら勝ち。'],
+      ]);
+    } else if (page === 1) {
+      text('遊び方 ― 後半戦（機体の中）', W / 2, 106, 26, '#ffd23f');
+      rows([
         ['燃料', '動力炉（心臓）へ燃料を運ぶ。切れると動けない。入れすぎると爆発！'],
         ['弾', '3種類の弾を装填口へ。操縦者が撃つ。足止め弾は相手の必殺技の準備を止められる。'],
         ['修理', '攻撃を受けると内部で火災や断線が起きる。長押しで直さないと、その部位が使えない。'],
         ['転倒', '機体が倒れると内部が傾いて全員が転がる。持ち物も落とす。'],
-        ['必殺技', 'ゲージMAXで発動。光った装置の前で、輪が重なる瞬間に押す。4人そろえば大技。'],
-        ['チャージャー', '手が空いたら「必殺チャージャー」を連打すると必殺技ゲージがたまる。燃料80〜105は最適出力で攻撃力アップ。'],
+        ['必殺技', 'ゲージMAXで発動。光った4つの装置の前で、輪が重なる瞬間に押す。全部PERFECTで大技。'],
+        ['チャージャー', '手が空いたら「必殺チャージャー」を連打。燃料80〜105は最適出力で攻撃力アップ。'],
         ['回避', '相手が必殺技を準備したら、回避装置を長押し。ゲージ満タンで回避、6割でかすり。'],
-        ['交代・操縦', '交代レバーを引いた人が次の操縦者。弱攻撃の連打でコンボ、攻撃が当たる直前のガードで「ジャストガード」。'],
-      ]],
-      ['遊び方 3/3 ― 操作', [
-        ['キーボード', '移動 WASD／決定・つかむ・作業 Space／パンチ・弱攻撃 J／投げる・強攻撃 K／スキル I'],
-        ['', '操縦中：ジャンプ W か Space／ガード L／飛び道具 U／必殺技 I／緊急脱出 X／一時停止 Esc'],
-        ['コントローラー', '移動 スティック／つかむ・作業 Ⓐ／パンチ・弱攻撃 Ⓧ／投げる・強攻撃 Ⓑ／スキル Ⓨ'],
-        ['', '操縦中：ジャンプ Ⓐ か↑／ガード RB／飛び道具 LB／必殺技 Ⓨ／緊急脱出 Back／一時停止 Start'],
-        ['スマホ', '画面左をなぞって移動、右のボタンで操作。横向きがおすすめ。'],
-        ['同じ画面で', 'ロビーで「ローカル人数」を増やすと、コントローラーの数だけ一緒に遊べる。'],
-        ['オンライン', 'このページを共有した相手と、同時に開いて「オンライン」を押すと同じ部屋に入る。'],
-      ]],
-    ][page];
-    text(P[0], W / 2, 74, 30, '#ffd23f');
-    const sp = P[1].length > 7 ? 56 : 62; P[1].forEach((l, i) => { text(l[0], 130, 138 + i * sp, 18, '#ffe9a8', 'left'); text(l[1], 290, 138 + i * sp, 16, '#e8ecff', 'left', 'normal'); });
-    hud.button('helpNext', W / 2 - 160, H - 104, 320, 54, page < 2 ? '次へ' : '閉じる', '#ffd23f', '', 22);
+        ['交代・操縦', '交代レバーを引いた人が次の操縦者。弱攻撃の連打でコンボ、直前のガードで「ジャストガード」。'],
+      ]);
+    } else if (page === 2) {
+      text('操作 ― キーボード', W / 2, 106, 26, '#ffd23f');
+      text('前半戦・裏方（機体の中）', 120, 146, 18, '#7fe8ff', 'left');
+      const y1 = 182, g = 40;
+      keyRow(['W', 'A', 'S', 'D'], '移動（矢印キーでもOK）', 120, y1);
+      keyRow(['Space'], 'かつぐ・拾う・入れる・作業（長押し）・連打', 120, y1 + g);
+      keyRow(['J'], 'パンチ（前半戦）', 120, y1 + g * 2);
+      keyRow(['K'], '投げる', 120, y1 + g * 3);
+      keyRow(['I'], 'キャラ固有スキル', 120, y1 + g * 4);
+      keyRow(['1', '2', '3'], '逆境カードを選ぶ', 120, y1 + g * 5);
+      text('操縦中（後半戦）', 660, 146, 18, '#ffd23f', 'left');
+      keyRow(['A', 'D'], '移動', 660, y1);
+      keyRow(['W', 'Space'], 'ジャンプ（相手を飛び越える）', 660, y1 + g);
+      keyRow(['J'], '弱攻撃（連打でコンボ）', 660, y1 + g * 2);
+      keyRow(['K'], '強攻撃（ジャンプ中は対空）', 660, y1 + g * 3);
+      keyRow(['L', 'Shift'], 'ガード', 660, y1 + g * 4);
+      keyRow(['U'], '飛び道具', 660, y1 + g * 5);
+      keyRow(['I'], '必殺技（ゲージMAX）', 660, y1 + g * 6);
+      keyRow(['X'], '緊急脱出（操縦を交代）', 660, y1 + g * 7);
+      keyRow(['Esc'], '一時停止', 120, y1 + g * 7);
+      text('同じ画面で2人以上のときは、P1がキーボード、P2からはコントローラーを使います。', W / 2, 560, 15, '#cfd6ff', 'center', 'normal');
+    } else if (page === 3) {
+      const kind = PADL[opt.pad] ? opt.pad : 'xbox', P = PADL[kind];
+      text(`操作 ― コントローラー（${P.name}）`, W / 2, 106, 26, '#ffd23f');
+      drawPadDiagram(P, 330, 300);
+      hud.button('helpPad', 190, 450, 280, 50, `表記：${P.name}`, '#9fe8ff', '押すと切り替え（Xbox／PS／Switch）', 16);
+      const colFn = k => k === P.A ? P.col.A : k === P.B ? P.col.B : k === P.X ? P.col.X : k === P.Y ? P.col.Y : '#e8ecff';
+      text('前半戦・裏方', 600, 140, 17, '#7fe8ff', 'left');
+      const y1 = 172, g = 33;
+      keyRow(['スティック', '十字'], '移動', 600, y1);
+      keyRow([P.A], 'かつぐ・拾う・入れる・作業（長押し）・連打', 600, y1 + g, colFn);
+      keyRow([P.X], 'パンチ（前半戦）', 600, y1 + g * 2, colFn);
+      keyRow([P.B], '投げる', 600, y1 + g * 3, colFn);
+      keyRow([P.Y], 'キャラ固有スキル', 600, y1 + g * 4, colFn);
+      text('操縦中（後半戦）', 600, 342, 17, '#ffd23f', 'left');
+      const y2 = 374;
+      keyRow([P.A, '十字↑'], 'ジャンプ', 600, y2, colFn);
+      keyRow([P.X], '弱攻撃（連打でコンボ）', 600, y2 + g, colFn);
+      keyRow([P.B], '強攻撃', 600, y2 + g * 2, colFn);
+      keyRow([P.R1, P.R2], 'ガード', 600, y2 + g * 3);
+      keyRow([P.L1, P.L2], '飛び道具', 600, y2 + g * 4);
+      keyRow([P.Y], '必殺技（ゲージMAX）', 600, y2 + g * 5, colFn);
+      keyRow([P.sel], '緊急脱出（操縦を交代）', 600, y2 + g * 6);
+      text(`${P.st}：一時停止　／　逆境カード：${P.X} ${P.Y} ${P.B}`, 330, 528, 15, '#cfd6ff', 'center', 'normal');
+      text(`メニュー：スティックで選んで ${kind === 'sw' ? P.B : P.A} 決定・${kind === 'sw' ? P.A : P.B} もどる`, 330, 552, 15, '#cfd6ff', 'center', 'normal');
+      if (kind === 'sw') text('※Switchは試合中、ボタンの位置どおりに動きます（下のⒷがアクション）', 330, 578, 13, '#ffb3a8', 'center', 'normal');
+    } else {
+      text('操作 ― スマホ・タブレット（横向き）', W / 2, 106, 26, '#ffd23f');
+      const sc = 0.78, w = 420 * sc, gx = (W - 3 * w - 72) / 2; drawPhone(TL.p1, '前半戦', gx, 160, sc); drawPhone(TL.crew, '裏方（機体の中）', gx + w + 36, 160, sc); drawPhone(TL.pilot, '操縦中', gx + (w + 36) * 2, 160, sc);
+      const L = [['左半分', 'どこでも指を置いてなぞると移動（指を置いた所がスティックの中心）'], ['大きいボタン', '前半戦は「かつぐ」、裏方は「アクション」（長押しで作業）'], ['緑のボタン', 'キャラ固有スキル。使うと待ち時間の秒数が出る'], ['操縦中', 'ジャンプ・弱・強・ガード・飛び道具・必殺・脱出のボタンに変わる'], ['ナビ', '次にやることが黄色い矢印で出る（ロビーでON/OFF）']];
+      L.forEach((l, i) => { text(l[0], 120, 448 + i * 34, 17, '#ffe9a8', 'left'); text(l[1], 280, 448 + i * 34, 15, '#e8ecff', 'left', 'normal'); });
+    }
+    if (page > 0) hud.button('helpPrev', W / 2 - 340, H - 92, 300, 52, 'もどる', '#9aa3c7', '', 20);
+    hud.button('helpNext', W / 2 + (page > 0 ? 40 : -150), H - 92, 300, 52, page < 4 ? '次へ' : '閉じる', '#ffd23f', '', 20);
   }
   function drawLobby(L) {
     hud.buttons = [];
@@ -474,11 +591,11 @@ export function createHud(ctx, R) {
       const x = t ? W / 2 + 20 : W / 2 - 480;
       rr(x, 104, 460, 300, 16); ctx.fillStyle = 'rgba(22,27,51,.94)'; ctx.fill(); ctx.strokeStyle = TEAM_COL[t]; ctx.lineWidth = 3; ctx.stroke();
       text(`${TEAM_NAME[t]}チーム`, x + 230, 130, 22, TEAM_COL[t]); text(t ? '怪人 → 大怪獣ドグラマグに乗り込む' : 'ヒーロー → 巨大ロボ ブレイバーに乗り込む', x + 230, 156, 13, '#9fb2e6', 'center', 'normal');
-      for (let k = 0; k < 4; k++) {
-        const sl = L.slots[t * 4 + k], y = 176 + k * 55; rr(x + 16, y, 428, 46, 10); ctx.fillStyle = sl.me ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.05)'; ctx.fill(); if (sl.me) { ctx.strokeStyle = sl.col; ctx.lineWidth = 2; ctx.stroke(); }
-        face(sl.human ? sl.col : '#6b7391', x + 46, y + 23, 0.95);
-        text(sl.name, x + 76, y + 23, 18, sl.human ? sl.col : '#8a93b5', 'left'); text(sl.tag, x + 432, y + 23, 13, sl.me ? '#ffe9a8' : '#8a93b5', 'right', 'normal');
-        const ch = CHARS[t][k], d1 = `${ch.title}｜${ch.p1.split('：')[0]}・${ch.p2.split('：')[0]}`, room = 432 - 40 - (86 + tw(sl.name, 18)); ctx.font = font(12, 'normal'); text(ctx.measureText(d1).width < room ? d1 : `${ch.title}｜${ch.p1.split('：')[0]}`, x + 86 + tw(sl.name, 18), y + 24, 12, sl.me ? '#ffe9a8' : '#7d88aa', 'left', 'normal');
+      for (let k = 0; k < TN; k++) {
+        const sl = L.slots[t * TN + k], y = 172 + k * 46; rr(x + 16, y, 428, 42, 10); ctx.fillStyle = sl.me ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.05)'; ctx.fill(); if (sl.me) { ctx.strokeStyle = sl.col; ctx.lineWidth = 2; ctx.stroke(); }
+        face(sl.human ? sl.col : '#6b7391', x + 46, y + 21, 0.88, t);
+        text(sl.name, x + 76, y + 21, 18, sl.human ? sl.col : '#8a93b5', 'left'); text(sl.tag, x + 432, y + 21, 13, sl.me ? '#ffe9a8' : '#8a93b5', 'right', 'normal');
+        const ch = CHARS[t][k], d1 = `${ch.title}｜${ch.p1.split('：')[0]}・${ch.p2.split('：')[0]}`, room = 432 - 40 - (86 + tw(sl.name, 18)); ctx.font = font(12, 'normal'); text(ctx.measureText(d1).width < room ? d1 : `${ch.title}｜${ch.p1.split('：')[0]}`, x + 86 + tw(sl.name, 18), y + 22, 12, sl.me ? '#ffe9a8' : '#7d88aa', 'left', 'normal');
       }
     }
     const y1 = 424, bw = 226, x0 = W / 2 - 480;
@@ -499,7 +616,7 @@ export function createHud(ctx, R) {
     hud.buttons = [];
     ctx.fillStyle = 'rgba(5,6,14,.82)'; ctx.fillRect(0, 0, W, H);
     text('オンライン対戦', W / 2, 120, 44, '#ffd23f', 'center', 'bold', '#11131f', 8);
-    text('友だちと同じ部屋に入って、ヒーロー vs 怪人で遊べます（最大8人・足りない席はBot）', W / 2, 180, 17, '#e8ecff', 'center', 'normal');
+    text('友だちと同じ部屋に入って、ヒーロー vs 怪人で遊べます（最大10人・足りない席はBot）', W / 2, 180, 17, '#e8ecff', 'center', 'normal');
     hud.button('create', W / 2 - 320, 250, 300, 110, '部屋を作る', '#ffd23f', 'あなたがホスト。招待リンクを送る', 28);
     hud.button('join', W / 2 + 20, 250, 300, 110, 'コードで参加', '#7fd6ff', '5文字の部屋コードを入力', 28);
     text('招待リンクを開いた人は、自動でその部屋に入ります', W / 2, 410, 16, '#cfd6ff', 'center', 'normal');

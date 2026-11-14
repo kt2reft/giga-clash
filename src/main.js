@@ -4,7 +4,7 @@
 // =====================================================================
 import * as S from './sim.js';
 import { createRenderer, W, H } from './render3d.js';
-import { createHud } from './hud.js';
+import { createHud, PADL, padKind } from './hud.js';
 import { AU, sfx, BGM } from './audio.js';
 import { createPeerRoom, newRoomCode, cleanCode } from './net-peer.js';
 export const VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : 'dev';
@@ -30,7 +30,7 @@ const APP = { screen: 'title', help: -1, paused: false, note: '', noteT: 0 };
 let G = null;
 const NAMES = ['ハヤテ', 'ツバサ', 'リュウ', 'アカネ', 'ミドリ', 'ソラ', 'カイ', 'ナギ', 'レン', 'ヒカリ', 'ユウ', 'マコト', 'シン', 'ルナ'];
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
-const LOC = { ch: +(store.get('gc_ch') || 0) % 4, navi: store.get('gc_navi') !== '0', low: store.get('gc_low') === '1' || location.search.includes('fast'), n: 1, team: 0, diff: 1, skipP1: false, name: store.get('gc_name') || NAMES[(Math.random() * NAMES.length) | 0], slots: [], dev: 'kb' };
+const LOC = { ch: +(store.get('gc_ch') || 0) % S.TN, navi: store.get('gc_navi') !== '0', low: store.get('gc_low') === '1' || location.search.includes('fast'), n: 1, team: 0, diff: 1, skipP1: false, name: store.get('gc_name') || NAMES[(Math.random() * NAMES.length) | 0], slots: [], dev: 'kb', pad: store.get('gc_pad') || 'xbox', helpPad: '' };
 const NET = { claudeRoom: null, mode: '', code: '', peerStat: '', room: null, on: false, t0: 0, peers: [], me: null, host: null, isHost: false, claimT: 0, as: [], mid: 0, hbStr: '', seq: 0, lastQ: -1, lastEv: 0, evId: 0, ring: [], pubT: 0, inT: 0, rin: {}, inStr: '' };
 function note(s, t = 3) { APP.note = s; APP.noteT = t; }
 resize(); R.setQuality(LOC.low);
@@ -72,7 +72,7 @@ function touchLayout() {
   if (!G || !LOC.slots.length || uiActive() || G.phase === 'trans') return [];
   const skl = () => { const cd = G.skcd ? G.skcd[LOC.slots[0]] : 0; return { n: 's', x: 1200, y: 470, r: 40, label: cd > 0 ? `${Math.ceil(cd)}秒` : 'スキル', col: cd > 0 ? '#8a93b5' : '#7dffb0' }; };
   if (G.phase === 'p1') return [{ n: 'a', x: 1150, y: 610, r: 62, label: 'かつぐ' }, { n: 'x', x: 1010, y: 652, r: 46, label: 'パンチ' }, { n: 'b', x: 1070, y: 520, r: 44, label: '投げる' }, skl()];
-  const T = G.teams[LOC.slots[0] < 4 ? 0 : 1], c = T.crew.find(c => c.slot === LOC.slots[0]);
+  const T = G.teams[S.teamOf(LOC.slots[0])], c = T.crew.find(c => c.slot === LOC.slots[0]);
   if (c && c.role === 'pilot' && G.phase === 'p2') return [{ n: 'x', x: 1050, y: 630, r: 50, label: '弱' }, { n: 'b', x: 1170, y: 560, r: 50, label: '強' }, { n: 'g', x: 1175, y: 670, r: 42, label: 'ガード' }, { n: 'm', x: 930, y: 665, r: 40, label: '飛び道具' }, { n: 's', x: 930, y: 565, r: 44, label: '必殺', col: '#ffd23f' }, { n: 'e', x: 1222, y: 446, r: 30, label: '脱出', col: '#ff8a80' }, { n: 'a', x: 1060, y: 500, r: 44, label: 'ジャンプ', col: '#9fe8ff' }];
   return [{ n: 'a', x: 1150, y: 620, r: 62, label: 'アクション' }, { n: 'b', x: 1015, y: 660, r: 44, label: '投げる' }, skl()];
 }
@@ -94,7 +94,7 @@ function endPointer(e) { const s = touch.pointers.get(e.pointerId); if (!s) retu
 ui.addEventListener('pointerup', endPointer); ui.addEventListener('pointercancel', endPointer); ui.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---- コントローラー
-const PADS = { list: [], prev: {}, hold: {} };
+const PADS = { list: [], prev: {}, hold: {}, kind: [] };
 function padOwner(idx) {
   const order = PADS.list.map(g => g.index), k = order.indexOf(idx); if (k < 0) return -1;
   if (LOC.n === 1) return 0;
@@ -112,11 +112,12 @@ function pollPads() {
     if (b(14)) ax = -1; if (b(15)) ax = 1; if (b(12)) ay = -1; if (b(13)) ay = 1;
     const dx = ax > 0.6 ? 1 : ax < -0.6 ? -1 : 0, dy = ay > 0.6 ? 1 : ay < -0.6 ? -1 : 0, li = padOwner(gp.index);
     const any = dx || dy || [0, 1, 2, 3, 4, 5, 9].some(b);
-    if (any) { AU.unlock(); if (li === 0) LOC.dev = 'pad'; }
+    if (li >= 0) PADS.kind[li] = padKind(gp.id);
+    if (any) { AU.unlock(); if (li === 0) { LOC.dev = 'pad'; const k = padKind(gp.id); if (k !== LOC.pad) { LOC.pad = k; store.set('gc_pad', k); } } }
     if (edge(9)) uiQ.pause = true;
     if (uia) {
       if (dx && dx !== prev.dx) uiQ.dx = dx; if (dy && dy !== prev.dy) uiQ.dy = dy;
-      if (edge(0)) uiQ.ok = true; if (edge(1)) uiQ.back = true;
+      const sw = padKind(gp.id) === 'sw'; if (edge(sw ? 1 : 0)) uiQ.ok = true; if (edge(sw ? 0 : 1)) uiQ.back = true;   // Switchは右（Ⓐ）で決定
     } else if (li >= 0) {
       if (G && G.phase === 'trans') { if (edge(2)) pickCard(li, 1); if (edge(3)) pickCard(li, 2); if (edge(1)) pickCard(li, 3); }
       else { if (edge(0)) press(li, 'a'); if (edge(2)) press(li, 'x'); if (edge(1)) press(li, 'b'); if (edge(3)) press(li, 's'); if (edge(4) || edge(6)) press(li, 'm'); if (edge(8)) press(li, 'e'); if (edge(12) || (dy < 0 && prev.dy >= 0)) press(li, 'j'); }
@@ -178,8 +179,8 @@ function drainEvents() {
 // ---------------------------------------------------------------- 試合の開始・終了
 function beginMatch(g, slots) { G = g; LOC.slots = slots; APP.screen = 'game'; APP.paused = false; hud.reset(); R.reset(); touch.btn = {}; touch.pointers.clear(); touch.stick = null; for (const p of players) { p.pend = newPend(); p.card = 0; p.rt = -1; } hud.focus = -1; }
 function offlineSlots() {
-  const sl = Array.from({ length: 8 }, (_, i) => ({ name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i] })), mine = [];
-  for (let li = 0; li < LOC.n; li++) { const s = LOC.team * 4 + (LOC.ch + li) % 4; sl[s].human = true; sl[s].name = LOC.n === 1 ? 'あなた' : `P${li + 1}`; mine.push(s); }
+  const sl = Array.from({ length: S.NS }, (_, i) => ({ name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i] })), mine = [];
+  for (let li = 0; li < LOC.n; li++) { const s = LOC.team * S.TN + (LOC.ch + li) % S.TN; sl[s].human = true; sl[s].name = LOC.n === 1 ? 'あなた' : `P${li + 1}`; mine.push(s); }
   return [sl, mine];
 }
 function startOffline(extra = {}) { const [sl, mine] = offlineSlots(); beginMatch(S.createMatch({ slots: sl, diff: LOC.diff, skipP1: LOC.skipP1, ...extra }), mine); }
@@ -241,16 +242,16 @@ function leaveOnline() {
 const older = (a, b) => a.presence.gc.t0 < b.presence.gc.t0 || (a.presence.gc.t0 === b.presence.gc.t0 && a.peer < b.peer);
 function validGc(p) { const g = p.presence && p.presence.gc; return p.kind === 'viewer' && g && typeof g === 'object' && g.v === 2 && typeof g.t0 === 'number'; }
 function assignSlots() {
-  const as = [null, null, null, null, null, null, null, null], sorted = NET.peers.slice().sort((a, b) => older(a, b) ? -1 : 1);
+  const as = new Array(S.NS).fill(null), sorted = NET.peers.slice().sort((a, b) => older(a, b) ? -1 : 1);
   for (const p of sorted) {
     const g = p.presence.gc, k = clamp(g.k | 0, 1, 4), want = g.t === 1 ? 1 : 0, nm = String(g.n || '？').slice(0, 8);
-    const pc = clamp(g.c | 0, 0, 3);
-    for (let li = 0; li < k; li++) for (const t of [want, 1 - want]) { let done = false; for (let jj = 0; jj < 4; jj++) { const j = (pc + jj) % 4; if (as[t * 4 + j]) continue; as[t * 4 + j] = [p.peer, li, k > 1 ? `${nm}${li + 1}` : nm]; done = true; break; } if (done) break; }
+    const pc = clamp(g.c | 0, 0, S.TN - 1);
+    for (let li = 0; li < k; li++) for (const t of [want, 1 - want]) { let done = false; for (let jj = 0; jj < S.TN; jj++) { const j = (pc + jj) % S.TN; if (as[t * S.TN + j]) continue; as[t * S.TN + j] = [p.peer, li, k > 1 ? `${nm}${li + 1}` : nm]; done = true; break; } if (done) break; }
   }
   return as;
 }
 function publishHb(st) { const hb = { st, ver: VERSION, mid: NET.mid, as: NET.as, diff: LOC.diff, sk: LOC.skipP1 ? 1 : 0 }, str = JSON.stringify(hb); if (str !== NET.hbStr) { NET.hbStr = str; setPresence({ hb }); } }
-function slotsFromAs(as) { const sl = [], mine = []; for (let i = 0; i < 8; i++) { const a = as[i]; sl.push(a ? { name: String(a[2]).slice(0, 10), human: true, col: S.SLOT_COL[i] } : { name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i] }); if (a && NET.me && a[0] === NET.me.peer) mine[a[1]] = i; } return [sl, mine.filter(x => x !== undefined)]; }
+function slotsFromAs(as) { const sl = [], mine = []; for (let i = 0; i < S.NS; i++) { const a = as[i]; sl.push(a ? { name: String(a[2]).slice(0, 10), human: true, col: S.SLOT_COL[i] } : { name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i] }); if (a && NET.me && a[0] === NET.me.peer) mine[a[1]] = i; } return [sl, mine.filter(x => x !== undefined)]; }
 function hostStart() {
   NET.as = assignSlots(); NET.mid = (Date.now() % 1e9) | 0; NET.rin = {}; NET.ring = []; NET.evId = 0; NET.seq = 0;
   const [sl, mine] = slotsFromAs(NET.as); beginMatch(S.createMatch({ slots: sl, diff: LOC.diff, skipP1: LOC.skipP1 }), mine); publishHb('game');
@@ -318,7 +319,7 @@ function netTick(dt, now) {
       if (G && G.client && s && typeof s === 'object' && s.m === NET.mid && s.q !== NET.lastQ && Array.isArray(s.d)) {
         NET.lastQ = s.q;
         try { S.decode(G, s.d); } catch (e) { }
-        for (const sl of LOC.slots) { const T = G.teams && G.teams[sl < 4 ? 0 : 1]; if (T) T.crew[sl % 4].pred = true; }
+        for (const sl of LOC.slots) { const T = G.teams && G.teams[S.teamOf(sl)]; if (T) T.crew[sl % S.TN].pred = true; }
         if (Array.isArray(s.e)) for (const ev of s.e) if (Array.isArray(ev) && ev[0] > NET.lastEv) { NET.lastEv = ev[0]; try { playEvent(ev.slice(1)); } catch (e) { } }
       }
     }
@@ -351,7 +352,7 @@ function predict(dt) {
       c.vx = (c.vx || 0) + (h.mx * sp - (c.vx || 0)) * k; c.vz = (c.vz || 0) + (h.my * sp - (c.vz || 0)) * k; S.moveCircle(c, c.vx * dt, c.vz * dt, 0.9);
       const err = Math.hypot(c.nx - c.x, c.nz - c.z), pull = !moving ? 6 : err > 3.5 ? 2.5 : 0; c.x += (c.nx - c.x) * Math.min(1, dt * pull); c.z += (c.nz - c.z) * Math.min(1, dt * pull);
     } else if (G.teams && (G.phase === 'p2' || G.phase === 'escape')) {
-      const T = G.teams[slot < 4 ? 0 : 1], c = T.crew[slot % 4]; if (!c || c.nx === undefined || c.role === 'pilot' || c.escaped) return;
+      const T = G.teams[S.teamOf(slot)], c = T.crew[slot % S.TN]; if (!c || c.nx === undefined || c.role === 'pilot' || c.escaped) return;
       if (c.dizzy > 0 || T.tilt) { c.x += (c.nx - c.x) * Math.min(1, dt * 12); c.y += (c.ny - c.y) * Math.min(1, dt * 12); c.vx = c.vy = 0; return; }
       S.moveCrew(G, T, c, h.mx, h.my, dt);
       const err = Math.hypot(c.nx - c.x, c.ny - c.y), pull = !moving ? 6 : err > 55 ? 2.5 : 0; c.x += (c.nx - c.x) * Math.min(1, dt * pull); c.y += (c.ny - c.y) * Math.min(1, dt * pull);
@@ -372,13 +373,16 @@ function onUI(id) {
     case 'invite': copyInvite(); break;
     case 'reload': location.reload(); break;
     case 'help': APP.help = 0; hud.focus = -1; break;
-    case 'helpNext': APP.help = APP.help >= 2 ? -1 : APP.help + 1; hud.focus = -1; break;
+    case 'helpNext': APP.help = APP.help >= 4 ? -1 : APP.help + 1; hud.focus = -1; break;
+    case 'help0': case 'help1': case 'help2': case 'help3': case 'help4': APP.help = +id.slice(4); break;
+    case 'helpPrev': APP.help = Math.max(0, APP.help - 1); hud.focus = -1; break;
+    case 'helpPad': { const ks = Object.keys(PADL), cur = LOC.helpPad || LOC.pad; LOC.helpPad = ks[(ks.indexOf(cur) + 1) % ks.length]; break; }
     case 'mute': AU.setMute(!AU.muted); break;
     case 'gfx': LOC.low = !LOC.low; store.set('gc_low', LOC.low ? '1' : '0'); R.setQuality(LOC.low); resize(); break;
     case 'team': LOC.team ^= 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'locals': LOC.n = LOC.n % 4 + 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'diff': if (host) LOC.diff = (LOC.diff + 1) % 4; break;
-    case 'char': LOC.ch = (LOC.ch + 1) % 4; store.set('gc_ch', String(LOC.ch)); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
+    case 'char': LOC.ch = (LOC.ch + 1) % S.TN; store.set('gc_ch', String(LOC.ch)); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'navi': LOC.navi = !LOC.navi; store.set('gc_navi', LOC.navi ? '1' : '0'); break;
     case 'p1': if (host) LOC.skipP1 = !LOC.skipP1; break;
     case 'name': LOC.name = NAMES[(NAMES.indexOf(LOC.name) + 1 + ((Math.random() * 3) | 0)) % NAMES.length]; store.set('gc_name', LOC.name); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
@@ -408,11 +412,11 @@ function lobbyModel() {
   const L = { ch: LOC.ch, navi: LOC.navi, online: NET.on, team: LOC.team, nLocal: LOC.n, diff: LOC.diff, skipP1: LOC.skipP1, name: LOC.name, dev: LOC.dev, host: !NET.on || NET.isHost, slots: [], status: '', hint: '', padInfo: `コントローラー ${PADS.list.length}台` };
   if (NET.on) {
     const as = NET.as || [];
-    for (let i = 0; i < 8; i++) { const a = as[i], me = a && NET.me && a[0] === NET.me.peer; L.slots.push(a ? { name: String(a[2]).slice(0, 10), human: true, col: S.SLOT_COL[i], me, tag: me ? 'あなた' : (NET.host && a[0] === NET.host.peer ? 'ホスト' : '参加者') } : { name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i], me: false, tag: 'Bot' }); }
+    for (let i = 0; i < S.NS; i++) { const a = as[i], me = a && NET.me && a[0] === NET.me.peer; L.slots.push(a ? { name: String(a[2]).slice(0, 10), human: true, col: S.SLOT_COL[i], me, tag: me ? 'あなた' : (NET.host && a[0] === NET.host.peer ? 'ホスト' : '参加者') } : { name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i], me: false, tag: 'Bot' }); }
     if (NET.mode === 'peer') {
       L.code = NET.code;
-      L.status = NET.peerStat === 'connecting' ? '接続中…' : !NET.host ? 'ホストを待っています…' : `部屋コード ${NET.code}　｜　部屋に ${NET.peers.length} 人（最大8人）`;
-      for (let i = 0; i < 8; i++) { const a = as[i]; if (!a) continue; const p = NET.peers.find(q => q.peer === a[0]); if (p && p.presence.gc.ver && p.presence.gc.ver !== VERSION) L.slots[i].tag = '要再読み込み'; }
+      L.status = NET.peerStat === 'connecting' ? '接続中…' : !NET.host ? 'ホストを待っています…' : `部屋コード ${NET.code}　｜　部屋に ${NET.peers.length} 人（最大10人）`;
+      for (let i = 0; i < S.NS; i++) { const a = as[i]; if (!a) continue; const p = NET.peers.find(q => q.peer === a[0]); if (p && p.presence.gc.ver && p.presence.gc.ver !== VERSION) L.slots[i].tag = '要再読み込み'; }
     } else L.status = !NET.me ? '接続中…' : !NET.host ? '部屋を準備中…' : `部屋に ${NET.peers.length} 人。このページを開いて「オンライン」を押した人が集まります`;
     L.hint = NET.mode === 'peer' ? '「招待リンクをコピー」で相手を呼べます。空いている席はBotが入ります' : '空いている席はBotが入ります。全員が同じチームなら協力プレイになります';
   } else {
@@ -422,14 +426,16 @@ function lobbyModel() {
   }
   return L;
 }
-const KEYS = {
-  kb: { a: '[Space]', aHold: '[Space長押し]', b: '[K]', s: '[I]', j: 'W', k: 'I' }, pad: { a: 'Ⓐ', aHold: 'Ⓐ長押し', b: 'Ⓑ', s: 'Ⓨ', j: 'Ⓐ', k: 'Ⓨ' }, touch: { a: '', aHold: '長押し', b: '「投げる」', s: '「必殺」', j: '「ジャンプ」', k: '「スキル」' },
-};
-const TIPS = {
-  kb: ['WASD：移動　Space：拾う・入れる・作業（長押し）・連打　K：投げる　I：スキル', 'A/D：移動　W/Space：ジャンプ　J連打：コンボ　K：強　L：ガード　U：飛び道具　I：必殺技　X：脱出'],
-  pad: ['スティック：移動　Ⓐ：拾う・入れる・作業（長押し）・連打　Ⓑ：投げる　Ⓨ：スキル', 'Ⓐ/↑：ジャンプ　Ⓧ連打：コンボ　Ⓑ：強　RB：ガード　LB：飛び道具　Ⓨ：必殺技　Back：脱出'],
-  touch: ['左側をなぞって移動　右のボタンで操作（緑はキャラ固有スキル）', '左側をなぞって移動　右のボタンでジャンプ・攻撃・ガード・必殺技'],
-};
+// 画面に出すボタン表記（キーボード／コントローラーの種類別／タッチ）
+const KB = { a: '[Space]', aHold: '[Space長押し]', b: '[K]', s: '[I]', j: 'W', k: 'I', x: 'J', e: 'X', cards: ['[1] ', '[2] ', '[3] '] };
+const TOUCHK = { a: '', aHold: '長押し', b: '「投げる」', s: '「必殺」', j: '「ジャンプ」', k: '「スキル」', x: '「弱」', e: '「脱出」', cards: ['', '', ''] };
+function padKeys(kind) { const P = PADL[kind] || PADL.xbox; return { a: P.A, aHold: `${P.A}長押し`, b: P.B, s: P.Y, j: P.A, k: P.Y, x: P.X, e: P.sel, cards: [P.X + ' ', P.Y + ' ', P.B + ' '] }; }
+function keysFor(dev) { return dev === 'pad' ? padKeys(LOC.pad) : dev === 'touch' ? TOUCHK : KB; }
+function tipsFor(dev) {
+  if (dev === 'touch') return ['左側をなぞって移動　右のボタンで操作（緑はキャラ固有スキル）', '左側をなぞって移動　右のボタンでジャンプ・攻撃・ガード・必殺技'];
+  if (dev === 'pad') { const P = PADL[LOC.pad] || PADL.xbox; return [`スティック：移動　${P.A}：拾う・入れる・作業（長押し）・連打　${P.B}：投げる　${P.Y}：スキル`, `${P.A}/↑：ジャンプ　${P.X}連打：コンボ　${P.B}：強　${P.R1}：ガード　${P.L1}：飛び道具　${P.Y}：必殺技　${P.sel}：脱出`]; }
+  return ['WASD：移動　Space：拾う・入れる・作業（長押し）・連打　K：投げる　I：スキル', 'A/D：移動　W/Space：ジャンプ　J連打：コンボ　K：強　L：ガード　U：飛び道具　I：必殺技　X：脱出'];
+}
 
 // ---------------------------------------------------------------- 自己ベスト
 const BEST = { v: +(store.get('gc_best') || 0), isNew: false, g: null };
@@ -454,7 +460,7 @@ function frame(now) {
   }
   // ---- 表示
   const dev = LOC.dev;
-  recordBest(); view = { navi: LOC.navi, best: BEST.v, newBest: BEST.isNew, team: LOC.slots.length ? (LOC.slots[0] < 4 ? 0 : 1) : 0, locals: LOC.slots, dev, key: KEYS[dev], keyPad: KEYS.pad, tipCrew: TIPS[dev][0], tipPilot: TIPS[dev][1], canRestart: !NET.on || NET.isHost };
+  recordBest(); view = { navi: LOC.navi, best: BEST.v, newBest: BEST.isNew, team: LOC.slots.length ? S.teamOf(LOC.slots[0]) : 0, locals: LOC.slots, dev, key: keysFor(dev), keyPad: padKeys(LOC.pad), keyPads: [0, 1, 2, 3].map(li => li === 0 ? keysFor(dev) : padKeys(PADS.kind[li] || LOC.pad)), tipCrew: tipsFor(dev)[0], tipPilot: tipsFor(dev)[1], canRestart: !NET.on || NET.isHost };
   const inGame = G && APP.screen === 'game';
   BGM.mode = !inGame ? 'title' : G.phase === 'p1' ? (G.cd > 0 ? 'title' : 'city') : G.phase === 'trans' ? 'off' : G.phase === 'p2' ? (G.cd > 0 ? 'off' : G.od ? 'od' : 'battle') : G.phase === 'escape' ? 'escape' : 'off';
   BGM.tick();
@@ -469,7 +475,7 @@ function frame(now) {
   } else if (APP.screen === 'lobby') hud.drawLobby(lobbyModel());
   else if (APP.screen === 'online') hud.drawOnline();
   else hud.drawTitle({ online: IN_CLAUDE ? !!NET.claudeRoom : PEER_OK, onlineWhy: 'この表示では使えません', muted: AU.muted, pads: PADS.list.length, low: LOC.low, ver: VERSION, newVer: UPD.newVer });
-  if (APP.help >= 0) hud.drawHelp(APP.help);
+  if (APP.help >= 0) hud.drawHelp(APP.help, { pad: LOC.helpPad || LOC.pad, dev: LOC.dev });
   if (APP.noteT > 0) hud.drawNote(APP.note);
   requestAnimationFrame(frame);
 }

@@ -46,7 +46,7 @@ export function createPeerRoom({ code, host, onStatus = () => { } }) {
       if (m.t === 'full' && Array.isArray(m.peers)) { others.clear(); for (const [id, p] of m.peers) if (id !== myId) others.set(id, p || {}); changed(); }
       else if (m.t === 'p' && m.id !== myId) { const p = others.get(m.id) || {}; merge(p, m.p || {}); others.set(m.id, p); changed(); }
       else if (m.t === 'leave') { others.delete(m.id); changed(); }
-      else if (m.t === 'full_room') status('error', 'この部屋は満員です（最大8人）');
+      else if (m.t === 'full_room') status('error', 'この部屋は満員です（最大10人）');
       else if (m.t === 'bye') { others.clear(); changed(); status('lost', 'ホストが部屋を閉じました'); }
     });
     hubConn.on('close', () => { if (!closed) { others.clear(); changed(); status('lost', 'ホストとの接続が切れました'); } });
@@ -54,7 +54,7 @@ export function createPeerRoom({ code, host, onStatus = () => { } }) {
   });
   peer.on('connection', c => {
     if (!host) { c.close(); return; }
-    if (conns.size >= 7) { c.on('open', () => { send(c, { t: 'full_room' }); setTimeout(() => c.close(), 300); }); return; }
+    if (conns.size >= 9) { c.on('open', () => { send(c, { t: 'full_room' }); setTimeout(() => c.close(), 300); }); return; }
     c.on('open', () => {
       seen.set(c.peer, Date.now()); conns.set(c.peer, c); others.set(c.peer, {}); changed();
       const all = [[myId, mine]]; for (const [id, p] of others) if (id !== c.peer) all.push([id, p]);

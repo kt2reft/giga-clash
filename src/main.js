@@ -30,7 +30,7 @@ const APP = { screen: 'title', help: -1, paused: false, note: '', noteT: 0 };
 let G = null;
 const NAMES = ['ハヤテ', 'ツバサ', 'リュウ', 'アカネ', 'ミドリ', 'ソラ', 'カイ', 'ナギ', 'レン', 'ヒカリ', 'ユウ', 'マコト', 'シン', 'ルナ'];
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
-const LOC = { low: store.get('gc_low') === '1' || location.search.includes('fast'), n: 1, team: 0, diff: 1, skipP1: false, name: store.get('gc_name') || NAMES[(Math.random() * NAMES.length) | 0], slots: [], dev: 'kb' };
+const LOC = { navi: store.get('gc_navi') !== '0', low: store.get('gc_low') === '1' || location.search.includes('fast'), n: 1, team: 0, diff: 1, skipP1: false, name: store.get('gc_name') || NAMES[(Math.random() * NAMES.length) | 0], slots: [], dev: 'kb' };
 const NET = { claudeRoom: null, mode: '', code: '', peerStat: '', room: null, on: false, t0: 0, peers: [], me: null, host: null, isHost: false, claimT: 0, as: [], mid: 0, hbStr: '', seq: 0, lastQ: -1, lastEv: 0, evId: 0, ring: [], pubT: 0, inT: 0, rin: {}, inStr: '' };
 function note(s, t = 3) { APP.note = s; APP.noteT = t; }
 resize(); R.setQuality(LOC.low);
@@ -303,7 +303,7 @@ function netTick(dt, now) {
   } else if (host) {
     const hb = host.presence.hb;
     if (hb && typeof hb === 'object' && Array.isArray(hb.as)) {
-      NET.as = hb.as; LOC.diff = clamp(hb.diff | 0, 0, 2); LOC.skipP1 = !!hb.sk;
+      NET.as = hb.as; LOC.diff = clamp(hb.diff | 0, 0, 3); LOC.skipP1 = !!hb.sk;
       if (hb.ver && hb.ver !== VERSION && !NET.verWarned) { NET.verWarned = true; note(`ホストとバージョンが違います（ホスト ${hb.ver}／あなた ${VERSION}）。両方ともページを再読み込みしてください`, 8); }
       if (hb.st === 'game' && hb.mid !== NET.mid) {
         NET.mid = hb.mid; NET.lastQ = -1; NET.lastEv = 0; const [sl, mine] = slotsFromAs(hb.as);
@@ -373,7 +373,8 @@ function onUI(id) {
     case 'gfx': LOC.low = !LOC.low; store.set('gc_low', LOC.low ? '1' : '0'); R.setQuality(LOC.low); resize(); break;
     case 'team': LOC.team ^= 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'locals': LOC.n = LOC.n % 4 + 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
-    case 'diff': if (host) LOC.diff = (LOC.diff + 1) % 3; break;
+    case 'diff': if (host) LOC.diff = (LOC.diff + 1) % 4; break;
+    case 'navi': LOC.navi = !LOC.navi; store.set('gc_navi', LOC.navi ? '1' : '0'); break;
     case 'p1': if (host) LOC.skipP1 = !LOC.skipP1; break;
     case 'name': LOC.name = NAMES[(NAMES.indexOf(LOC.name) + 1 + ((Math.random() * 3) | 0)) % NAMES.length]; store.set('gc_name', LOC.name); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'start': case 'again': if (!host) break; if (NET.on) hostStart(); else startOffline(); break;
@@ -399,7 +400,7 @@ function uiNav() {
   uiQ.dx = uiQ.dy = 0; uiQ.ok = uiQ.back = uiQ.pause = false;
 }
 function lobbyModel() {
-  const L = { online: NET.on, team: LOC.team, nLocal: LOC.n, diff: LOC.diff, skipP1: LOC.skipP1, name: LOC.name, dev: LOC.dev, host: !NET.on || NET.isHost, slots: [], status: '', hint: '', padInfo: `コントローラー ${PADS.list.length}台` };
+  const L = { navi: LOC.navi, online: NET.on, team: LOC.team, nLocal: LOC.n, diff: LOC.diff, skipP1: LOC.skipP1, name: LOC.name, dev: LOC.dev, host: !NET.on || NET.isHost, slots: [], status: '', hint: '', padInfo: `コントローラー ${PADS.list.length}台` };
   if (NET.on) {
     const as = NET.as || [];
     for (let i = 0; i < 8; i++) { const a = as[i], me = a && NET.me && a[0] === NET.me.peer; L.slots.push(a ? { name: String(a[2]).slice(0, 10), human: true, col: S.SLOT_COL[i], me, tag: me ? 'あなた' : (NET.host && a[0] === NET.host.peer ? 'ホスト' : '参加者') } : { name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i], me: false, tag: 'Bot' }); }
@@ -420,11 +421,18 @@ const KEYS = {
   kb: { a: '[Space]', aHold: '[Space長押し]', b: '[K]', s: '[I]' }, pad: { a: 'Ⓐ', aHold: 'Ⓐ長押し', b: 'Ⓑ', s: 'Ⓨ' }, touch: { a: '', aHold: '長押し', b: '「投げる」', s: '「必殺」' },
 };
 const TIPS = {
-  kb: ['WASD：移動　Space：拾う・入れる・作業（長押し）　K：投げる', 'A/D：移動　J：弱　K：強　L：ガード　U：飛び道具　I：必殺技　X：緊急脱出'],
-  pad: ['スティック：移動　Ⓐ：拾う・入れる・作業（長押し）　Ⓑ：投げる', 'Ⓧ：弱　Ⓑ：強　RB：ガード　LB：飛び道具　Ⓨ：必殺技　Back：緊急脱出'],
+  kb: ['WASD：移動　Space：拾う・入れる・作業（長押し）・連打　K：投げる', 'A/D：移動　J連打：コンボ　K：強　L：ガード（直前でジャスト）　U：飛び道具　I：必殺技　X：脱出'],
+  pad: ['スティック：移動　Ⓐ：拾う・入れる・作業（長押し）・連打　Ⓑ：投げる', 'Ⓧ連打：コンボ　Ⓑ：強　RB：ガード（直前でジャスト）　LB：飛び道具　Ⓨ：必殺技　Back：脱出'],
   touch: ['左側をなぞって移動　右のボタンで操作', '左側をなぞって移動　右のボタンで攻撃・ガード・必殺技'],
 };
 
+// ---------------------------------------------------------------- 自己ベスト
+const BEST = { v: +(store.get('gc_best') || 0), isNew: false, g: null };
+function recordBest() {
+  if (!G || G.phase !== 'result' || !G.result || !G.result.score || BEST.g === G.result || !LOC.slots.length) return;
+  BEST.g = G.result; const sc = G.result.score[LOC.slots[0]] || 0;
+  BEST.isNew = sc > BEST.v; if (BEST.isNew) { BEST.v = sc; store.set('gc_best', String(sc)); }
+}
 // ---------------------------------------------------------------- メインループ
 const STEP = 1 / 60, NOGL = location.search.includes('nogl'); let acc = 0, last = performance.now();
 function frame(now) {
@@ -441,7 +449,7 @@ function frame(now) {
   }
   // ---- 表示
   const dev = LOC.dev;
-  view = { team: LOC.slots.length ? (LOC.slots[0] < 4 ? 0 : 1) : 0, locals: LOC.slots, dev, key: KEYS[dev], keyPad: KEYS.pad, tipCrew: TIPS[dev][0], tipPilot: TIPS[dev][1], canRestart: !NET.on || NET.isHost };
+  recordBest(); view = { navi: LOC.navi, best: BEST.v, newBest: BEST.isNew, team: LOC.slots.length ? (LOC.slots[0] < 4 ? 0 : 1) : 0, locals: LOC.slots, dev, key: KEYS[dev], keyPad: KEYS.pad, tipCrew: TIPS[dev][0], tipPilot: TIPS[dev][1], canRestart: !NET.on || NET.isHost };
   const inGame = G && APP.screen === 'game';
   BGM.mode = !inGame ? 'title' : G.phase === 'p1' ? (G.cd > 0 ? 'title' : 'city') : G.phase === 'trans' ? 'off' : G.phase === 'p2' ? (G.cd > 0 ? 'off' : G.od ? 'od' : 'battle') : G.phase === 'escape' ? 'escape' : 'off';
   BGM.tick();
@@ -473,4 +481,4 @@ checkVersion(); setInterval(() => { if (APP.screen !== 'game') checkVersion(); }
 { const m = /^#room-([A-Za-z0-9]{5})$/.exec(location.hash); if (m && PEER_OK) setTimeout(() => startPeer(m[1], false), 300); }
 
 // ---------------------------------------------------------------- テスト用
-window.__GC = { VERSION, startPeer, get G() { return G; }, S, APP, LOC, NET, R, hud, players, startOffline, onUI, press, toTitle };
+window.__GC = { AU, BGM, BEST, VERSION, startPeer, get G() { return G; }, S, APP, LOC, NET, R, hud, players, startOffline, onUI, press, toTitle };

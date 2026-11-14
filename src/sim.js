@@ -6,11 +6,11 @@
 export const P1_TIME = 120, BATTLE_TIME = 180, WORLD_W = 1000;
 export const BAL = {
   fuelDecay: 2.6, burn: 0.45, botSpd: 195, notice: 1.4,
-  spBase: 7, spVar: 16, spPerfect: 6, spDeal: 0.9, spTake: 1.3, spIdle: 0.4,
-  thrustTime: 5.5, fatHit: 1.7, kd: 0.2, fireP: 8,
+  spBase: 6, spVar: 14, spPerfect: 6, spDeal: 0.9, spTake: 1.3, spIdle: 0.4,
+  thrustTime: 5.5, chgRefill: 0.5, chgPer: 0.5, optLo: 80, optHi: 105, optMul: 1.1, fatHit: 1.7, kd: 0.2, fireP: 8,
   p1Speed: 11, capTime: 5.0,
 };
-export const DIFF = [{ name: 'やさしい', dmg: 0.78, spd: 0.9 }, { name: 'ふつう', dmg: 0.89, spd: 0.96 }, { name: 'むずかしい', dmg: 1.0, spd: 1.0 }, { name: '-', dmg: 1, spd: 1 }];
+export const DIFF = [{ name: 'やさしい', dmg: 0.78, spd: 0.9 }, { name: 'ふつう', dmg: 0.89, spd: 0.96 }, { name: 'むずかしい', dmg: 1.0, spd: 1.0 }, { name: 'げきむず', dmg: 1.14, spd: 1.04 }, { name: '-', dmg: 1, spd: 1 }];
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -37,8 +37,8 @@ export const THEME = [
 ];
 export const ZONE_EFF = { rarm: '弱攻撃 使用不可', head: '飛び道具 使用不可', legs: '移動速度 低下', larm: '強攻撃 使用不可' };
 export const BASE_INFO = [
-  { key: 'hosp', name: '病院', eff: '最大HP+8' }, { key: 'lab', name: '研究所', eff: '必殺ゲージ+40' },
-  { key: 'power', name: '発電所', eff: '燃料の減り-30%' }, { key: 'fact', name: '工場', eff: '弾3発で開始' }, { key: 'tv', name: 'テレビ局', eff: '作業速度+15%・声援強化' },
+  { key: 'hosp', name: '病院', eff: '最大HP+8' }, { key: 'lab', name: '研究所', eff: '必殺ゲージ+50' },
+  { key: 'power', name: '発電所', eff: '燃料の減り-20%' }, { key: 'fact', name: '工場', eff: '弾3発で開始' }, { key: 'tv', name: 'テレビ局', eff: '作業速度+15%・声援強化' },
 ];
 export const CARDS = [
   { name: '先制攻撃', desc: '開幕、相手を2.5秒動けなくする' },
@@ -108,6 +108,7 @@ export const ST = {
   crateN: { x: 1200, y: 92, r: 34, solid: 28, item: 'mN' }, crateH: { x: 1200, y: 210, r: 34, solid: 28, item: 'mH' }, crateS: { x: 1200, y: 328, r: 34, solid: 28, item: 'mS' },
   c1: { x: 405, y: 96, r: 30, solid: 20 }, c2: { x: 405, y: 330, r: 30, solid: 20 }, c3: { x: 875, y: 330, r: 30, solid: 20 },
   thruster: { x: 640, y: 345, r: 38, solid: 28 },
+  charger: { x: 880, y: 124, r: 30, solid: 20 },
 };
 const SOLIDS = Object.values(ST).filter(s => s.solid > 0);
 export const ROOM = { x0: 24, y0: 22, x1: 1256, y1: 398 };
@@ -121,10 +122,11 @@ export const ZKEYS = ['rarm', 'head', 'legs', 'larm'];
 export const CON = ['c1', 'c2', 'c3'];
 export const ITEMS = ['coal', 'mN', 'mH', 'mS'];
 const ATK = {
-  weak: { wind: 0.15, act: 0.1, rec: 0.22, range: 172, dmg: 0.85, en: 4, fat: 0.3, part: 'rarm' },
+  weak: { wind: 0.15, act: 0.1, rec: 0.22, range: 172, dmg: 0.78, en: 4, fat: 0.3, part: 'rarm' },
+  fin: { wind: 0.17, act: 0.12, rec: 0.42, range: 190, dmg: 1.7, en: 6, fat: 0.6, part: 'rarm', kb: 60 },
   strong: { wind: 0.36, act: 0.12, rec: 0.42, range: 190, dmg: 1.9, en: 10, fat: 1.5, part: 'larm', kb: 45 },
 };
-export const ATK_T = { weak: ATK.weak, strong: ATK.strong };
+export const ATK_T = { weak: ATK.weak, strong: ATK.strong, fin: ATK.fin };
 const MISSILE = { mN: { dmg: 2.2, spd: 760 }, mH: { dmg: 1.7, spd: 600, unblock: true }, mS: { dmg: 0.7, spd: 680, stun: 1.7 } };
 
 // ---------------------------------------------------------------------
@@ -147,7 +149,7 @@ function shout(G, T, c, text, force = false) { if (!force && c.shoutCD > 0) retu
 // 試合の作成
 // ---------------------------------------------------------------------
 export function newInp() { return { mx: 0, my: 0, a: false, x: false, g: false, aP: false, bP: false, xP: false, mP: false, sP: false, eP: false, card: 0, rt: -1 }; }
-function newStat() { return { cit: 0, cap: 0, ko: 0, dmg: 0, mdmg: 0, coal: 0, load: 0, fix: 0, perfect: 0, thrust: 0, fall: 0, drop: 0, ff: 0, boom: 0, pilotT: 0 }; }
+function newStat() { return { jg: 0, combo: 0, chg: 0, cit: 0, cap: 0, ko: 0, dmg: 0, mdmg: 0, coal: 0, load: 0, fix: 0, perfect: 0, thrust: 0, fall: 0, drop: 0, ff: 0, boom: 0, pilotT: 0 }; }
 export function createMatch(cfg) {
   const G = {
     cfg, slots: cfg.slots, auto: !!cfg.auto, client: !!cfg.client, t: 0, ev: [], inp: [], st: [], phase: 'p1', cd: 3, time: P1_TIME,
@@ -157,7 +159,7 @@ export function createMatch(cfg) {
   for (let i = 0; i < 8; i++) { G.inp.push(newInp()); G.st.push(newStat()); }
   const humans = [0, 1].map(t => G.slots.slice(t * 4, t * 4 + 4).filter(s => s.human).length);
   const d = DIFF[cfg.diff == null ? 1 : cfg.diff];
-  G.hc = [0, 1].map(t => cfg.hc ? cfg.hc[t] : (humans[t] === 0 && humans[1 - t] > 0 ? d : DIFF[3]));
+  G.hc = [0, 1].map(t => cfg.hc ? cfg.hc[t] : (humans[t] === 0 && humans[1 - t] > 0 ? d : DIFF[4]));
   // 人間がいるチームのBotは少しだけ手を抜く（人間の働きが勝敗に効くように）
   G.lazy = cfg.lazy || [0, 1].map(t => humans[t] > 0); G.proxy = cfg.proxy == null ? -1 : cfg.proxy;
   setupP1(G);
@@ -353,7 +355,7 @@ function stepP1(G, dt) {
     if (c.dizzy > 0) { c.dizzy -= dt; continue; }
     // うろうろ・怪人から逃げる
     let fx = 0, fz = 0;
-    for (const ch of P.chars) if (ch.team === 1) { const dx = c.x - ch.x, dz = c.z - ch.z, d = hyp(dx, dz); if (d < 6 && d > 0.01) { fx += dx / d; fz += dz / d; } }
+    for (const ch of P.chars) if (ch.team === 1) { const dx = c.x - ch.x, dz = c.z - ch.z, d = hyp(dx, dz); if (d < 4.5 && d > 0.01) { fx += dx / d; fz += dz / d; } }
     let sp = 2.6;
     if (fx || fz) { const l = hyp(fx, fz) || 1; c.vx = fx / l * 3.8; c.vz = fz / l * 3.8; sp = 3.8; c.wt = 0.5; }
     else {
@@ -428,15 +430,15 @@ function setupP2(G) {
   const tr = G.tr;
   G.teams = [0, 1].map(id => {
     const T = {
-      id, fuel: 72, troubles: [], items: [], mq: [], tilt: null, leverCD: 0, swapT: 0, swaps: 0, armAlarm: 0, buzzCD: 0, planT: 0, kdCD: 0, card: -1, cardUsed: false,
+      id, fuel: 72, chgB: 2, troubles: [], items: [], mq: [], tilt: null, leverCD: 0, swapT: 0, swaps: 0, armAlarm: 0, buzzCD: 0, planT: 0, kdCD: 0, card: -1, cardUsed: false,
       bp: { decT: 0, guardT: 0, mcd: 2, mv: 0 }, fuelMul: 1, work: 1, cheer: 0,
       g: { x: id ? 670 : 330, face: id ? -1 : 1, hp: 100, max: 100, en: 100, sp: 0, atk: null, hitT: 0, downT: 0, stunT: 0, sysT: 0, dodgeT: 0, guarding: false, walk: 0, vx: 0, charge: 0, dead: 0, fl: 0 },
       crew: [],
     };
     const m = tr ? tr.mask[id] : 0;
     if (m & 1) { T.g.max = T.g.hp = 108; }
-    if (m & 2) T.g.sp = 40;
-    if (m & 4) T.fuelMul = 0.7;
+    if (m & 2) T.g.sp = 50;
+    if (m & 4) T.fuelMul = 0.8;
     if (m & 8) T.mq = [{ t: 'mN', by: id * 4 }, { t: 'mH', by: id * 4 }, { t: 'mS', by: id * 4 }];
     if (m & 16) T.work = 1.15;
     T.cheer = Math.round(Math.min(60, (tr ? tr.pts[id] : 0) * 1.1 * (m & 16 ? 1.5 : 1)));
@@ -634,7 +636,16 @@ function doPress(G, T, c, rt = -1) {
   if (it) { c.carry = it.t; T.items.splice(T.items.indexOf(it), 1); sfx(G, T.id, 'pick'); return; }
   if (near(c, ST.lever, 42)) { pullLever(G, T, c); return; }
   if (near(c, ST.coal, 30)) { c.carry = 'coal'; sfx(G, T.id, 'pick'); return; }
+  if (near(c, ST.charger, 30) && G.phase === 'p2') { pumpCharger(G, T, c); return; }
   for (const k of ['crateN', 'crateH', 'crateS']) if (near(c, ST[k], 30)) { c.carry = ST[k].item; sfx(G, T.id, 'pick'); return; }
+}
+export const chargerOpen = (G, T) => T.g.sp < 100 && !(G.sp && G.sp.team === T.id);
+function pumpCharger(G, T, c) {
+  if (!chargerOpen(G, T)) { popI(G, T.id, ST.charger.x, ST.charger.y - 40, T.g.sp >= 100 ? '必殺技ゲージ満タン！' : '今は使えない', '#aab'); return; }
+  if (T.chgB < BAL.chgPer) { popI(G, T.id, ST.charger.x, ST.charger.y - 40, 'オーバーヒート中…', '#ff9a3c', 14); return; }
+  T.chgB -= BAL.chgPer; T.g.sp = Math.min(100, T.g.sp + BAL.chgPer * 2); G.st[c.slot].chg++;
+  sfx(G, T.id, 'pump'); puffI(G, T.id, ST.charger.x, ST.charger.y, 3, T.id ? '#ff9af0' : '#ffd23f', 90, 5, 'spark');
+  if (G.st[c.slot].chg % 5 === 0) popI(G, T.id, ST.charger.x, ST.charger.y - 40, '必殺ゲージ +', '#ffd23f', 15);
 }
 function doWork(G, T, c, dt) {
   const t = workTarget(G, T, c); if (!t) return false;
@@ -708,7 +719,8 @@ function planBots(G, T, E_) {
     take({ key: 'misN', type: 'missile', want }, ST.launcher);
   }
   const homes = [{ x: 560, y: 210 }, { x: 760, y: 220 }, { x: 420, y: 210 }, { x: 860, y: 200 }];
-  for (const b of free) b.job = { key: 'idle' + b.k, type: 'idle', home: homes[b.k] };
+  let chg = 0;
+  for (const b of free) { if (chargerOpen(G, T) && chg < 1 && !humans.some(h => near(h, ST.charger, 40))) { chg++; b.job = { key: 'chg', type: 'charge' }; } else b.job = { key: 'idle' + b.k, type: 'idle', home: homes[b.k] }; }
 }
 function botCrew(G, T, c, dt) {
   let wx = 0, wy = 0, act = false, hold = false; const j = c.job;
@@ -751,6 +763,7 @@ function botCrew(G, T, c, dt) {
         break;
       }
       case 'idle': go(j.home.x, j.home.y, 30); break;
+      case 'charge': if (approach(ST.charger, 16) && Math.random() < dt * 2.2) doPress(G, T, c); break;
     }
   }
   if (Math.abs(wx) + Math.abs(wy) > 0.3) {
@@ -773,6 +786,27 @@ function humanCrew(G, T, c, inp, dt) {
   if (inp.a || inp.x) c.working = doWork(G, T, c, dt);
   if (inp.bP && c.carry) throwItem(G, T, c);
 }
+// ナビ：次にやると良いこと（ライト層向けの道案内）
+export function crewNavi(G, T, c) {
+  if (c.role === 'pilot' || c.escaped) return null;
+  const th = THEME[T.id], at = (s, text, hold = false) => ({ x: ST[s].x, y: ST[s].y, text, hold });
+  if (G.phase === 'escape') return G.esc.loser === T.id ? at('pod', `${th.pod}へ逃げろ！`) : null;
+  if (G.phase !== 'p2' || G.cd > 0) return null;
+  const sp = G.sp;
+  if (sp && sp.team === T.id && sp.phase !== 'fire') { const k = CON.find(q => sp.assign[q] === c.slot); if (k) return at(k, sp.phase === 'prep' ? '光っている持ち場へ！' : '輪が重なったら押す！'); return null; }
+  if (sp && sp.team !== T.id && sp.phase !== 'fire' && sp.thrust < 1) return at('thruster', `${th.thruster}を長押し！`, true);
+  const pc = pilotOf(T);
+  if (pc && T.leverCD <= 0 && (pc.fat > 82 || T.g.stunT > 0.5)) return at('lever', `${th.lever}を引いて交代！`);
+  if (c.carry === 'coal') return at('reactor', T.fuel > 100 ? `入れすぎ注意！様子を見て${th.reactor}へ` : `${th.reactor}へ入れる`);
+  if (c.carry) return at('launcher', `${th.launcher}へ装填する`);
+  let best = null, bd = 1e9; for (const t of T.troubles) { const d = hyp(t.x - c.x, t.y - c.y); if (d < bd) { bd = d; best = t; } }
+  if (best) return { x: best.x, y: best.y, text: `${best.type === 'fire' ? th.fireVerb : th.cableVerb}（長押し）`, hold: true };
+  if (T.fuel < 50 && !T.crew.some(o => o !== c && o.carry === 'coal')) return at('coal', `${th.fuel}を取って${th.reactor}へ`);
+  if (T.mq.length < 2 && !T.crew.some(o => o !== c && o.carry && o.carry !== 'coal')) return at('crateN', `弾を取って${th.launcher}へ`);
+  if (T.fuel < BAL.optLo && !T.crew.some(o => o !== c && o.carry === 'coal')) return at('coal', `${th.fuel}で最適出力（${BAL.optLo}〜${BAL.optHi}）に`);
+  if (chargerOpen(G, T)) return at('charger', '必殺チャージャーを連打！');
+  return null;
+}
 export function promptFor(G, T, c) {
   if (c.role === 'pilot' || c.escaped) return null;
   const th = THEME[T.id];
@@ -792,6 +826,7 @@ export function promptFor(G, T, c) {
   if (nearestFloorItem(T, c)) return '拾う';
   if (near(c, ST.lever, 42)) return T.leverCD > 0 ? 'レバー冷却中' : `${th.lever}：${th.seat}へ`;
   if (near(c, ST.coal, 30)) return `${th.fuel}を持つ`;
+  if (near(c, ST.charger, 30)) return chargerOpen(G, T) ? '連打：必殺チャージャー' : '必殺ゲージ満タン';
   for (const k of ['crateN', 'crateH', 'crateS']) if (near(c, ST[k], 30)) return `${th[ST[k].item]}を持つ`;
   return null;
 }
@@ -891,6 +926,14 @@ function hitGiant(G, D, A, dmg, part, o = {}) {
   const g = D.g; if (G.phase !== 'p2' || g.dodgeT > 0 || g.hp <= 0) return 0;
   const blocked = g.guarding && !o.unblock && g.downT <= 0 && g.stunT <= 0;
   dmg *= G.hc[A.id].dmg;
+  if (A.fuel >= BAL.optLo && A.fuel <= BAL.optHi) dmg *= BAL.optMul;
+  // ジャストガード：攻撃が当たる直前（0.15秒以内）にガードを始めると、無傷で相手をよろけさせる
+  const dp = pilotOf(D);
+  if (blocked && o.melee && dp && !isBot(G, dp.slot) && G.t - (g.gStart || -9) < 0.15) {
+    A.g.atk = null; A.g.hitT = 0.75; A.g.buf = null; g.sp = Math.min(100, g.sp + 6); G.st[dp.slot].jg++;
+    sfx(G, -1, 'perfect'); sfx(G, -1, 'block'); sparkE(G, g.x + g.face * 40, 120, 24, '#ffffff'); popE(G, g.x, 230, 'ジャストガード！', '#7fe8ff', 26);
+    G.hitstop = Math.max(G.hitstop, 0.12); return 0;
+  }
   if (blocked) { dmg *= 0.25; g.en = Math.max(0, g.en - 5); sfx(G, -1, 'block'); sparkE(G, g.x + g.face * 40, 120, 10, '#9ad8ff'); }
   else { sfx(G, -1, dmg >= 3 ? 'hitH' : 'hitL'); sparkE(G, g.x + g.face * 30, 110, 16); }
   g.hp = Math.max(0, g.hp - dmg); g.fl = 0.12;
@@ -985,18 +1028,29 @@ function updateGiant(G, T, En, dt) {
   const human = pc && !isBot(G, pc.slot);
   const inp = human ? G.inp[pc.slot] : botPilot(G, T, En, dt);
   if (human && inp.eP) ejectPilot(G, T);
-  g.guarding = false;
+  const prevG = g.guarding; g.guarding = false; g.comboT = (g.comboT || 0) - dt; if (g.comboT <= 0) g.combo = 0;
   const mine = G.sp && G.sp.team === T.id;
   if (G.sp && G.sp.phase !== 'prep') { g.charge = mine ? Math.min(1, g.charge + dt * 3) : 0; return; }
   g.charge = mine ? Math.min(1, g.charge + dt * 2) : Math.max(0, g.charge - dt * 2);
   if (g.atk) {
     g.atk.t += dt; const a = g.atk, d = a.def;
+    // 入力の先行受付（攻撃中に押したボタンを覚えておく）
+    if ((inp.xP || inp.bP) && a.t > d.wind * 0.5) g.buf = { type: inp.bP ? 'strong' : 'weak', t: 0.35 };
+    if (g.buf) { g.buf.t -= dt; if (g.buf.t <= 0) g.buf = null; }
+    // コンボ：当たった攻撃の硬直をキャンセルして次の攻撃へ（弱→弱→フィニッシュ、または弱→強）
+    if (g.buf && a.landed && a.type === 'weak' && a.t >= d.wind + d.act && G.phase === 'p2') {
+      let nt = g.buf.type === 'strong' ? 'strong' : (a.n >= 2 ? 'fin' : 'weak'); const nd = ATK[nt];
+      if (!zoneOff(T, nd.part) && g.en >= nd.en) { g.en -= nd.en; if (pc) pc.fat = Math.min(100, pc.fat + nd.fat); g.atk = { type: nt, def: nd, t: 0, hit: false, n: a.n + 1 }; g.buf = null; return; }
+      g.buf = null;
+    }
     if (!a.hit && a.t >= d.wind) {
       a.hit = true; sfx(G, -1, 'whoosh');
       const dx = (e.x - g.x) * g.face;
       if (dx > 0 && dx < d.range && e.hp > 0 && e.downT <= 0) {
         const part = a.type === 'weak' ? pick(['rarm', 'larm', 'head']) : pick(['legs', 'legs', 'head', 'larm', 'rarm']);
-        const real = hitGiant(G, En, T, d.dmg, part, { kb: d.kb, kd: a.type === 'strong' && Math.random() < BAL.kd }); if (pc) G.st[pc.slot].dmg += real;
+        const real = hitGiant(G, En, T, d.dmg, part, { melee: true, kb: d.kb, kd: (a.type === 'strong' && Math.random() < BAL.kd + (a.n > 1 ? 0.15 : 0)) || (a.type === 'fin' && Math.random() < 0.3) });
+        if (pc) G.st[pc.slot].dmg += real;
+        if (real > 0) { a.landed = true; g.combo = (a.n || 1); g.comboT = 0.9; if (g.combo >= 2) { popE(G, e.x, 280, `${g.combo} HIT${a.type === 'weak' ? '' : '！ コンボ'}`, '#ffd23f', 20 + g.combo * 2); if (pc) G.st[pc.slot].combo = Math.max(G.st[pc.slot].combo, g.combo); } }
       }
     }
     if (a.t >= d.wind + d.act + d.rec) g.atk = null;
@@ -1005,11 +1059,12 @@ function updateGiant(G, T, En, dt) {
   if (!canAct(G, T)) return;
   if (inp.sP && g.sp >= 100) { if (startSpecial(G, T)) return; }
   if (inp.mP) fireMissile(G, T);
-  if (inp.g && g.en > 0) { g.guarding = true; g.en = Math.max(0, g.en - 7 * dt); g.vx = 0; return; }
-  if (inp.xP || inp.bP) {
-    const type = inp.bP ? 'strong' : 'weak', def = ATK[type];
+  if (inp.g && g.en > 0) { if (!prevG) g.gStart = G.t; g.guarding = true; g.en = Math.max(0, g.en - 7 * dt); g.vx = 0; return; }
+  const bufT = g.buf ? g.buf.type : null; g.buf = null;
+  if (inp.xP || inp.bP || bufT) {
+    const type = inp.bP || bufT === 'strong' ? 'strong' : 'weak', def = ATK[type];
     if (zoneOff(T, def.part)) { if (T.buzzCD <= 0) { sfx(G, T.id, 'buzz'); popE(G, g.x, 250, `${th.zones[def.part]}損傷：${th[type]}不可！`, '#ff6464', 18); T.buzzCD = 0.7; } }
-    else if (g.en >= def.en) { g.en -= def.en; if (pc) pc.fat = Math.min(100, pc.fat + def.fat); g.atk = { type, def, t: 0, hit: false }; g.vx = 0; return; }
+    else if (g.en >= def.en) { g.en -= def.en; if (pc) pc.fat = Math.min(100, pc.fat + def.fat); g.atk = { type, def, t: 0, hit: false, n: 1 }; g.vx = 0; return; }
     else if (T.buzzCD <= 0) { sfx(G, T.id, 'buzz'); popE(G, g.x, 250, 'エネルギー不足', '#ff6464', 18); T.buzzCD = 0.7; }
   }
   const legs = zoneOff(T, 'legs') ? 0.45 : 1, sp = 125 * legs * (G.od ? 1.15 : 1);
@@ -1027,7 +1082,8 @@ function startEscape(G, L) {
   sfx(G, -1, 'boom');
   for (const c of L.crew) { c.job = null; c.notice = rnd(0.3, 1.6); }
 }
-function crewScore(s) { return s.coal * 2 + s.load * 3 + s.fix * 4 + s.perfect * 3 + s.thrust * 1.2 + s.mdmg * 2; }
+function crewScore(s) { return s.coal * 2 + s.load * 3 + s.fix * 4 + s.perfect * 3 + s.thrust * 1.2 + s.mdmg * 2 + s.chg * 0.15; }
+export function playerScore(s, won) { return Math.round(s.cit * 30 + s.cap * 50 + s.ko * 15 + s.coal * 20 + s.load * 25 + s.fix * 40 + s.perfect * 50 + s.thrust * 12 + s.dmg * 10 + s.mdmg * 15 + s.jg * 80 + s.combo * 20 + s.chg * 3 + (won ? 300 : 0)); }
 function endMatch(G, win, reason) {
   G.phase = 'result';
   const all = [0, 1, 2, 3, 4, 5, 6, 7], st = G.st;
@@ -1043,7 +1099,7 @@ function endMatch(G, win, reason) {
   funny.sort((a, b) => b.v - a.v); if (funny.length) { delete funny[0].v; awards.push(funny[0]); }
   G.result = { win, reason, awards: awards.slice(0, 4), hp: [Math.ceil(G.teams[0].g.hp), Math.ceil(G.teams[1].g.hp)], swaps: [G.teams[0].swaps, G.teams[1].swaps],
     esc: G.esc ? G.teams[G.esc.loser].crew.filter(c => c.escaped).length : -1, p1: G.tr ? { score: G.tr.score, own: G.tr.own, pts: G.tr.pts } : null,
-    st: st.map(s => [Math.round(s.dmg), Math.round(s.mdmg), s.coal, s.load, s.fix, s.perfect, s.fall, s.cit, s.cap]), t: 0 };
+    st: st.map(s => [Math.round(s.dmg), Math.round(s.mdmg), s.coal, s.load, s.fix, s.perfect, s.fall, s.cit, s.cap]), score: st.map((s, i) => playerScore(s, win === (i < 4 ? 0 : 1))), jg: st.map(s => s.jg), t: 0 };
   sfx(G, win, 'fanfare'); if (win >= 0) sfx(G, 1 - win, 'sad');
 }
 function stepP2(G, dt) {
@@ -1068,6 +1124,7 @@ function stepP2(G, dt) {
     for (const T of G.teams) {
       if (!cine) { T.fuel = Math.max(0, T.fuel - BAL.fuelDecay * T.fuelMul * (G.od ? 1.2 : 1) * dt); T.g.sp = Math.min(100, T.g.sp + dt * BAL.spIdle * (G.od ? 1.8 : 1)); }
       if (T.tilt) { T.tilt.t -= dt; if (T.tilt.t <= 0) T.tilt = null; }
+      T.chgB = Math.min(2, T.chgB + BAL.chgRefill * dt);
       for (const t of T.troubles) if (t.type === 'fire') {
         t.hp = Math.min(100, t.hp + 7 * dt);
         if (t.hp >= 100) { T.g.hp = Math.max(0, T.g.hp - BAL.burn * dt); t.spreadT -= dt; if (t.spreadT <= 0) { t.spreadT = 8; spawnTrouble(G, T, t.zone, 'fire'); } }
@@ -1134,7 +1191,7 @@ export function step(G, dt) {
 // =====================================================================
 const PH = ['p1', 'trans', 'p2', 'escape', 'result'];
 const r1 = v => Math.round(v * 10), r0 = v => Math.round(v);
-const TT = ['fire', 'cable'], SPH = ['prep', 'seq', 'fire'], OUT = ['', 'dodge', 'graze', 'hit'], RES = ['P', 'G', 'M'], AT = ['weak', 'strong'], CS = ['free', 'held', 'air'];
+const TT = ['fire', 'cable'], SPH = ['prep', 'seq', 'fire'], OUT = ['', 'dodge', 'graze', 'hit'], RES = ['P', 'G', 'M'], AT = ['weak', 'strong', 'fin'], CS = ['free', 'held', 'air'];
 export function encode(G) {
   const s = [PH.indexOf(G.phase), r1(G.time), r1(Math.max(0, G.cd)), G.od ? 1 : 0];
   if (G.phase === 'p1' || G.phase === 'trans') {
@@ -1151,7 +1208,7 @@ export function encode(G) {
         r0(T.fuel), (T.leverCD > 0 ? 1 : 0) | (T.armAlarm > 0 ? 2 : 0) | (T.swapT > 0 ? 4 : 0), T.tilt ? [T.tilt.dir, r1(T.tilt.t)] : 0, r0(T.cheer), T.card,
         T.crew.map(c => [r0(c.x), r0(c.y), ITEMS.indexOf(c.carry), (c.role === 'pilot' ? 1 : 0) | (c.dizzy > 0 ? 2 : 0) | (c.adren > 0 ? 4 : 0) | (c.escaped ? 8 : 0) | (c.working ? 16 : 0), r0(c.fat), r0(c.fx * 7), r0(c.fy * 7)]),
         T.troubles.map(t => [TT.indexOf(t.type), ZKEYS.indexOf(t.zone), r0(t.x), r0(t.y), r0(t.type === 'fire' ? t.hp : t.prog * 100)]),
-        T.items.map(i => [ITEMS.indexOf(i.t), r0(i.x), r0(i.y), r0(i.z)]), T.mq.map(m => ITEMS.indexOf(m.t))];
+        T.items.map(i => [ITEMS.indexOf(i.t), r0(i.x), r0(i.y), r0(i.z)]), T.mq.map(m => ITEMS.indexOf(m.t)), r0(T.chgB * 50), r0(g.combo || 0)];
     }));
     const sp = G.sp;
     s.push(sp ? [sp.team, SPH.indexOf(sp.phase), r1(sp.t), CON.map(k => sp.assign[k] === undefined ? -1 : sp.assign[k]), sp.step, r0(sp.ringT * 100), sp.res.map(r => RES.indexOf(r)), sp.pressed ? 1 : 0, r0(sp.thrust * 100), OUT.indexOf(sp.out), sp.allP ? 1 : 0] : 0);
@@ -1189,7 +1246,7 @@ export function decode(G, s) {
       });
       T.troubles = a[7].map(t => ({ type: TT[t[0]], zone: ZKEYS[t[1]], x: t[2], y: t[3], hp: t[4], prog: t[4] / 100, born: 0 }));
       T.items = a[8].map(i => ({ t: ITEMS[i[0]], x: i[1], y: i[2], z: i[3], fly: false, vx: 0, vy: 0, vz: 0 }));
-      T.mq = a[9].map(i => ({ t: ITEMS[i] }));
+      T.mq = a[9].map(i => ({ t: ITEMS[i] })); T.chgB = (a[10] || 0) / 50; if ((a[11] || 0) !== (g.combo || 0)) { g.combo = a[11] || 0; } g.comboT = 0.9;
     });
     const sp = s[k++];
     if (sp) {

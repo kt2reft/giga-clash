@@ -399,6 +399,10 @@ export function createRenderer(canvas) {
     o.fan = grp(s, 0, 1, 0);
     if (!k) for (let i = 0; i < 4; i++) { const b = mesh(G_BOX, o.thrMat, o.fan, 0, 0, 0, 3, 0.12, 0.5); b.rotation.y = i * Math.PI / 4; }
     else for (let i = 0; i < 5; i++) { const b = mesh(G_CONE, o.thrMat, o.fan, Math.cos(i * 1.26) * 0.8, 0.5, Math.sin(i * 1.26) * 0.8, 0.5, 1.8 + (i % 2) * 0.6, 0.5); b.rotation.z = -Math.cos(i * 1.26) * 0.4; b.rotation.x = Math.sin(i * 1.26) * 0.4; }
+    // 必殺チャージャー（空き時間に連打）
+    s = S('charger'); mesh(G_CYL, base, s, 0, 0.4, 0, 1.5, 0.8, 1.5); o.chgMat = glow(0xffd23f);
+    o.chgBar = mesh(G_CYL, o.chgMat, s, 0, 1.2, 0, 0.9, 0.8, 0.9);
+    o.pump = grp(s, 0, 1.7, 0); mesh(G_CYL, metal, o.pump, 0, 0.5, 0, 0.12, 1.2, 0.12); mesh(G_BOX, toon(k ? 0xff5af0 : 0xff5a4f), o.pump, 0, 1.1, 0, 1.4, 0.25, 0.3);
     // 乗組員・アイテム・トラブル
     o.crew = []; o.marks = []; o.carry = [];
     for (let i = 0; i < 4; i++) {
@@ -539,6 +543,9 @@ export function createRenderer(canvas) {
     const mine = sp && sp.team === team && sp.phase !== 'fire';
     for (const key of CON) { const on = mine && sp.assign[key] !== undefined, cur = on && sp.phase === 'seq' && CON[sp.step] === key; o.cons[key].color.set(cur ? (Math.sin(time * 16) > 0 ? 0xffffff : 0xffd23f) : on ? 0xffd23f : 0x4a5577); }
     const def = sp && sp.team !== team && sp.phase !== 'fire';
+    const chgOpen = T.g.sp < 100 && !(sp && sp.team === team), cb = clamp(T.chgB / 2, 0, 1);
+    o.chgMat.color.set(!chgOpen ? 0x4a5577 : cb < 0.25 ? 0xff6f3c : (k ? 0xff9af0 : 0xffd23f)); o.chgBar.scale.y = 0.2 + cb * 1.4; o.chgBar.position.y = 0.8 + o.chgBar.scale.y / 2;
+    o.pumpY = lerp(o.pumpY || 0, T.crew.some(c => c.role !== 'pilot' && !c.escaped && Math.hypot(c.x - ST.charger.x, c.y - ST.charger.y) < 60) ? Math.abs(Math.sin(time * 14)) * -0.5 : 0, 0.5); o.pump.position.y = 1.7 + o.pumpY;
     o.thrMat.color.set(def ? (sp.thrust >= 1 ? 0x3fe0d0 : (Math.sin(time * 10) > 0 ? 0x9ad8ff : 0x3fe0d0)) : 0x3d5a66);
     if (k) o.fan.scale.setScalar(1 + (def ? sp.thrust * 0.5 : 0)); else o.fan.rotation.y += dt * (def ? 4 + sp.thrust * 30 : 0.6);
     // 乗組員

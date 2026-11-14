@@ -1,7 +1,7 @@
 // =====================================================================
 // GIGA-CLASH  hud.js — 2Dオーバーレイ（HUD・メニュー・タッチ操作の表示）
 // =====================================================================
-import { THEME, ZKEYS, ZONES, ZONE_EFF, ST, CON, CITY, BASE_INFO, CARDS, TEAM_NAME, TEAM_COL, SLOT_COL, DIFF, pilotOf, zoneOff, promptFor, BATTLE_TIME } from './sim.js';
+import { THEME, ZKEYS, ZONES, ZONE_EFF, ST, CON, CITY, BASE_INFO, CARDS, TEAM_NAME, TEAM_COL, SLOT_COL, DIFF, BAL, pilotOf, zoneOff, promptFor, crewNavi, chargerOpen, BATTLE_TIME } from './sim.js';
 import { W, H, EXT_H } from './render3d.js';
 
 const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Noto Sans CJK JP","Yu Gothic","Meiryo",sans-serif';
@@ -121,6 +121,24 @@ export function createHud(ctx, R) {
         else if (inBase && inBase.own !== c.team) label('確保中…（敵がいると止まる）', p.x, p.y + 30, 13, '#cfe3ff');
       }
     }
+    // ナビ（前半戦）
+    if (view.navi && view.locals.length && G.cd <= 0) {
+      const c = P.chars[view.locals[0]];
+      if (c && c.stun <= 0) {
+        let tx = null, tz = null, msg = '';
+        if (c.carry >= 0) { const g = CITY.goals[c.team]; tx = g.x; tz = g.z; msg = `${c.team ? 'ダークゲート' : 'シェルター'}へ運ぶ`; }
+        else {
+          let best = null, bd = 30; for (const ci of P.cits) if (ci.state === 'free') { const d = Math.hypot(ci.x - c.x, ci.z - c.z); if (d < bd) { bd = d; best = ci; } }
+          let base = null, bb = 1e9; for (const b of P.bases) if (b.own !== c.team) { const d = Math.hypot(b.x - c.x, b.z - c.z); if (d < bb) { bb = d; base = b; } }
+          if (best) { tx = best.x; tz = best.z; msg = '市民をかつぐ'; } else if (base) { tx = base.x; tz = base.z; msg = `${BASE_INFO[base.id].name}を確保する`; }
+        }
+        if (tx !== null) {
+          const a = R.projC(c.x, 0.5, c.z), b = R.projC(tx, 0.5, tz), dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+          if (d > 70) { const ang = Math.atan2(dy, dx); ctx.save(); ctx.translate(a.x + dx / d * 62, a.y + dy / d * 62); ctx.rotate(ang); ctx.fillStyle = '#ffd23f'; ctx.strokeStyle = '#11131f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-9, -12); ctx.lineTo(-9, 12); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+          const m = '次にやること：' + msg, w = tw(m, 17) + 36; rr(W / 2 - w / 2, H - 52, w, 34, 10); ctx.fillStyle = 'rgba(40,32,8,.9)'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); text(m, W / 2, H - 35, 17, '#ffe9a8');
+        }
+      }
+    }
     // ミニマップ
     const mx = W - 214, my = 98, mw = 200, mh = 120, sx = x => mx + (x + 80) / 160 * mw, sy = z => my + (z + 48) / 96 * mh;
     rr(mx - 4, my - 4, mw + 8, mh + 8, 8); ctx.fillStyle = 'rgba(8,10,22,.72)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -194,6 +212,7 @@ export function createHud(ctx, R) {
     ZKEYS.forEach((z, i) => { const off = zoneOff(T, z), x = left ? x0 + i * 56 : x0 - 52 - i * 56; rr(x, 96, 52, 20, 6); ctx.fillStyle = off ? 'rgba(255,70,60,.9)' : 'rgba(30,40,70,.78)'; ctx.fill(); text(th.zones[z], x + 26, 106, 12, off ? '#fff' : '#9fb2e6'); });
     for (let i = 0; i < 3; i++) { const m = T.mq[i], x = left ? x0 + 232 + i * 18 : x0 - 246 - i * 18; rr(x, 96, 14, 20, 4); ctx.fillStyle = m ? ITEM_COL[T.id][m.t] : 'rgba(30,40,70,.78)'; ctx.fill(); }
     if (pc) text(`${th.pilot}：${G.slots[pc.slot].name}`, x0 + d * 300, 106, 12, SLOT_COL[pc.slot], al, 'bold', 'rgba(0,0,0,.8)', 3);
+    if (T.fuel >= BAL.optLo && T.fuel <= BAL.optHi && G.phase === 'p2') text('最適出力', x0 + d * 240, 64, 12, '#7dffb0', al, 'bold', 'rgba(0,0,0,.85)', 3);
     const p = R.projE(g.x, 258);
     if (G.phase === 'p2') { if (g.sysT > 0) text(G.cd > 0 || g.en > 5 ? '動けない！' : th.noFuel, p.x, p.y, 17, '#ff6464', 'center', 'bold', '#000', 4); else if (g.stunT > 0) text(pc && pc.fat > 70 ? `${th.pilot}ダウン！交代を！` : '足止めされた！', p.x, p.y, 17, '#ffb347', 'center', 'bold', '#000', 4); }
   }
@@ -208,11 +227,14 @@ export function createHud(ctx, R) {
       text(`${th.zones[z]}ブロック`, p.x, p.y, 12, off ? '#ff9a90' : 'rgba(190,205,255,.6)', 'left', 'bold', 'rgba(0,0,0,.5)', 3);
       if (off) text(`⚠ ${ZONE_EFF[z]}`, p.x, p.y + 16, 12, '#ff9a90', 'left', 'bold', 'rgba(0,0,0,.6)', 3);
     }
-    const SL = (key, name, dy = 0, col = '#cfd6ff') => { const s = ST[key], p = R.projI(s.x, s.y + s.r + 14 + dy); text(name, p.x, p.y, 12, col, 'center', 'bold', 'rgba(0,0,0,.75)', 3); return p; };
+    const SL = (key, name, dy = 0, col = '#cfd6ff') => { const s = ST[key], p = R.projI(s.x, s.y + s.r + 14 + dy); text(name, p.x, p.y, 14, col, 'center', 'bold', 'rgba(0,0,0,.8)', 4); return p; };
     let p = SL('reactor', `${th.reactor}　${Math.round(T.fuel)}`, 8, T.fuel < 25 ? '#ff8a80' : T.fuel > 100 ? '#ffb347' : '#cfd6ff');
     bar(p.x - 44, p.y + 9, 88, 8, T.fuel / 120, T.fuel < 25 ? '#ff6464' : T.fuel > 100 ? '#ff4b2b' : '#7dffb0');
     ctx.fillStyle = '#ff4b2b'; ctx.fillRect(p.x - 44 + 88 * 100 / 120, p.y + 7, 2, 12);
     if (live && (T.fuel < 25 || T.fuel > 100)) { const q = R.projI(ST.reactor.x, ST.reactor.y, 4.2); text(T.fuel < 25 ? '燃料切れ寸前！' : '入れすぎ危険！', q.x, q.y, 14, '#ff6464', 'center', 'bold', '#000', 4); }
+    const opt = T.fuel >= BAL.optLo && T.fuel <= BAL.optHi;
+    if (opt && live) { const q = R.projI(ST.reactor.x, ST.reactor.y, 4.2); text('最適出力！ 攻撃力×' + BAL.optMul, q.x, q.y, 14, '#7dffb0', 'center', 'bold', '#000', 4); }
+    { const cp = SL('charger', '必殺チャージャー', -4, chargerOpen(G, T) ? '#ffe9a8' : '#7d88aa'); bar(cp.x - 34, cp.y + 9, 68, 7, T.chgB / 2, T.chgB < 0.5 ? '#ff6f3c' : '#ffd23f'); }
     SL('coal', th.fuel); SL('launcher', th.launcher); SL('crateN', th.mN, -4); SL('crateH', th.mH, -4); SL('crateS', th.mS, -4);
     SL('pod', th.pod, -8, esc && G.esc.loser === T.id ? '#7dffb0' : '#7d88aa');
     if (T.armAlarm > 0) { const q = R.projI(ST.launcher.x, ST.launcher.y, 3); text('弾切れ！', q.x, q.y, 15, '#ff6464', 'center', 'bold', '#000', 4); }
@@ -243,6 +265,27 @@ export function createHud(ctx, R) {
       const c = T.crew[b.k]; if (!c || c.escaped) continue; const q = c.role === 'pilot' ? R.projI(ST.seat.x, ST.seat.y, 4) : R.projI(c.x, c.y, 4.6), w = tw(b.text, 14) + 16;
       ctx.globalAlpha = clamp(b.t * 3, 0, 1); rr(q.x - w / 2, q.y - 13, w, 26, 10); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.moveTo(q.x - 5, q.y + 12); ctx.lineTo(q.x, q.y + 20); ctx.lineTo(q.x + 5, q.y + 12); ctx.fill(); text(b.text, q.x, q.y, 14, '#1a1d2e'); ctx.globalAlpha = 1;
     }
+    // ---- ナビ（次にやること）
+    if (view.navi && me.length) {
+      const c = T.crew.find(x => x.slot === me[0]);
+      let nv = c && crewNavi(G, T, c);
+      if (c && c.role === 'pilot' && live && G.cd <= 0) {
+        const msg = c.fat > 75 ? `疲れてきた！ ${view.dev === 'pad' ? 'Back' : view.dev === 'touch' ? '「脱出」' : 'X'} で仲間と交代` : T.g.sp >= 100 && !G.sp ? `必殺技OK！ ${view.key.s} で発動` : `${view.dev === 'pad' ? 'Ⓧ' : view.dev === 'touch' ? '「弱」' : 'J'}連打でコンボ／敵の攻撃の直前にガードでジャストガード`;
+        const w = tw(msg, 16) + 36; rr(W / 2 - w / 2, EXT_H + 26, w, 32, 10); ctx.fillStyle = 'rgba(40,32,8,.9)'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); text(msg, W / 2, EXT_H + 42, 16, '#ffe9a8');
+      }
+      if (nv) {
+        const a = R.projI(c.x, c.y, 0.3), b = R.projI(nv.x, nv.y, 0.3), dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), pulse = 0.5 + Math.sin(S.t * 6) * 0.5;
+        if (d > 60) {
+          ctx.save(); ctx.strokeStyle = 'rgba(255,214,90,.55)'; ctx.lineWidth = 4; ctx.setLineDash([10, 10]); ctx.lineDashOffset = -S.t * 40;
+          ctx.beginPath(); ctx.moveTo(a.x + dx / d * 34, a.y + dy / d * 34); ctx.lineTo(b.x - dx / d * 34, b.y - dy / d * 34); ctx.stroke(); ctx.restore();
+          const ang = Math.atan2(dy, dx); ctx.save(); ctx.translate(a.x + dx / d * 44, a.y + dy / d * 44); ctx.rotate(ang); ctx.fillStyle = '#ffd23f'; ctx.strokeStyle = '#11131f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, -11); ctx.lineTo(-8, 11); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+        }
+        ctx.strokeStyle = `rgba(255,214,90,${0.5 + pulse * 0.5})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(b.x, b.y, 40 + pulse * 8, 22 + pulse * 4, 0, 0, 7); ctx.stroke();
+        const msg = '次にやること：' + nv.text, w = tw(msg, 17) + 36;
+        rr(W / 2 - w / 2, EXT_H + 26, w, 34, 10); ctx.fillStyle = 'rgba(40,32,8,.9)'; ctx.fill(); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke();
+        text(msg, W / 2, EXT_H + 43, 17, '#ffe9a8');
+      }
+    }
     // ---- 自分への操作ガイド
     me.forEach((s, li) => {
       const c = T.crew.find(x => x.slot === s); if (!c || c.role === 'pilot' || c.escaped || !(live || esc)) return;
@@ -272,7 +315,7 @@ export function createHud(ctx, R) {
     text(`${th.inside}　｜　${me.length ? 'あなた：' : ''}${role}`, 16, EXT_H + 8, 13, TEAM_COL[view.team], 'left');
     if (c0) text(c0.role === 'pilot' ? view.tipPilot : view.tipCrew, W - 16, EXT_H + 8, 12, '#9fb2e6', 'right', 'normal');
     if (live && G.cd > 0) { text(G.cd > 1.4 ? 'READY' : 'FIGHT!!', W / 2, 180, 84, '#fff', 'center', 'bold', '#11131f', 10); }
-    if (live && G.time > BATTLE_TIME - 9 && G.cd <= 0 && c0 && c0.role !== 'pilot') {
+    if (live && !view.navi && G.time > BATTLE_TIME - 9 && G.cd <= 0 && c0 && c0.role !== 'pilot') {
       ctx.globalAlpha = clamp(G.time - (BATTLE_TIME - 9), 0, 1); rr(W / 2 - 330, 640, 660, 50, 12); ctx.fillStyle = 'rgba(8,10,22,.88)'; ctx.fill(); ctx.strokeStyle = '#ffc531'; ctx.lineWidth = 2; ctx.stroke();
       text(`${th.fuel}・弾・${th.fire}に気を配ろう。疲れた${th.pilot}は${th.lever}で交代！`, W / 2, 665, 16, '#ffe9a8'); ctx.globalAlpha = 1;
     }
@@ -320,13 +363,18 @@ export function createHud(ctx, R) {
       text(sl.name, x + 78, y + 62, 20, sl.col, 'left'); text(a.note, x + 78, y + 88, 12, '#cfd6ff', 'left', 'normal');
     });
     const y0 = 256; rr(60, y0, W - 120, 322, 14); ctx.fillStyle = 'rgba(22,27,51,.92)'; ctx.fill();
-    const cols = ['名前', '与ダメージ', '飛び道具', '燃料', '装填', '修理', 'PERFECT', '転倒', '市民', '拠点'];
-    cols.forEach((c, i) => text(c, 170 + i * 108, y0 + 22, 13, '#9fb2e6'));
+    const cols = ['名前', '与ダメージ', '飛び道具', '燃料', '装填', '修理', 'PERFECT', '転倒', '市民', '拠点', 'スコア'];
+    cols.forEach((c, i) => text(c, 160 + i * 98, y0 + 22, 13, i === 10 ? '#ffd23f' : '#9fb2e6'));
     for (let s = 0; s < 8; s++) {
       const y = y0 + 52 + s * 33 + (s >= 4 ? 8 : 0), st = r.st[s], sl = G.slots[s];
       if (view.locals.includes(s)) { rr(70, y - 14, W - 140, 28, 8); ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill(); }
       ctx.fillStyle = TEAM_COL[s < 4 ? 0 : 1]; ctx.fillRect(74, y - 11, 5, 22);
-      text(sl.name + (sl.human ? '' : '（Bot）'), 170, y, 15, sl.col); st.forEach((v, i) => text(String(v), 278 + i * 108, y, 15, '#e8ecff'));
+      text(sl.name + (sl.human ? '' : '（Bot）'), 160, y, 15, sl.col); st.forEach((v, i) => text(String(v), 258 + i * 98, y, 15, '#e8ecff')); if (r.score) text(String(r.score[s]), 160 + 10 * 98, y, 15, '#ffd23f');
+    }
+    if (r.score && view.locals.length) {
+      const sc = r.score[view.locals[0]];
+      text(`あなたのスコア ${sc}`, 90, 600, 22, '#ffd23f', 'left'); text(view.newBest ? '★ 自己ベスト更新！' : `自己ベスト ${view.best}`, 90, 630, 16, view.newBest ? '#7dffb0' : '#cfd6ff', 'left');
+      if (r.jg && r.jg[view.locals[0]]) text(`ジャストガード ${r.jg[view.locals[0]]}回`, 90, 656, 14, '#7fe8ff', 'left', 'normal');
     }
     if (r.t > 0.8) {
       if (view.canRestart) { hud.button('again', W / 2 - 320, 600, 300, 66, 'もう1戦', '#ffd23f', view.dev === 'kb' ? 'Enter' : ''); hud.button('lobby', W / 2 + 20, 600, 300, 66, 'ロビーへ', '#cfe3ff'); }
@@ -382,8 +430,9 @@ export function createHud(ctx, R) {
         ['修理', '攻撃を受けると内部で火災や断線が起きる。長押しで直さないと、その部位が使えない。'],
         ['転倒', '機体が倒れると内部が傾いて全員が転がる。持ち物も落とす。'],
         ['必殺技', 'ゲージMAXで発動。光った装置の前で、輪が重なる瞬間に押す。4人そろえば大技。'],
+        ['チャージャー', '手が空いたら「必殺チャージャー」を連打すると必殺技ゲージがたまる。燃料80〜105は最適出力で攻撃力アップ。'],
         ['回避', '相手が必殺技を準備したら、回避装置を長押し。ゲージ満タンで回避、6割でかすり。'],
-        ['交代', '交代レバーを引いた人が次の操縦者。操縦者は疲労がたまるとダウンする。'],
+        ['交代・操縦', '交代レバーを引いた人が次の操縦者。弱攻撃の連打でコンボ、攻撃が当たる直前のガードで「ジャストガード」。'],
       ]],
       ['遊び方 3/3 ― 操作', [
         ['キーボード', '移動 WASD／決定・つかむ・作業 Space／パンチ・弱攻撃 J／投げる・強攻撃 K'],
@@ -396,7 +445,7 @@ export function createHud(ctx, R) {
       ]],
     ][page];
     text(P[0], W / 2, 74, 30, '#ffd23f');
-    P[1].forEach((l, i) => { text(l[0], 130, 142 + i * 62, 18, '#ffe9a8', 'left'); text(l[1], 290, 142 + i * 62, 16, '#e8ecff', 'left', 'normal'); });
+    const sp = P[1].length > 7 ? 56 : 62; P[1].forEach((l, i) => { text(l[0], 130, 138 + i * sp, 18, '#ffe9a8', 'left'); text(l[1], 290, 138 + i * sp, 16, '#e8ecff', 'left', 'normal'); });
     hud.button('helpNext', W / 2 - 160, H - 104, 320, 54, page < 2 ? '次へ' : '閉じる', '#ffd23f', '', 22);
   }
   function drawLobby(L) {
@@ -420,9 +469,10 @@ export function createHud(ctx, R) {
     if (L.host) { hud.button('diff', x0 + 488, y1, bw, 58, `Botの強さ：${DIFF[L.diff].name}`, '#cfe3ff', '相手が全員Botのとき', 19); hud.button('p1', x0 + 732, y1, bw, 58, L.skipP1 ? '後半戦だけ' : '前半戦＋後半戦', '#cfe3ff', '試合の長さ', 19); }
     else { text(`Botの強さ：${DIFF[L.diff].name}　／　${L.skipP1 ? '後半戦だけ' : '前半戦＋後半戦'}（ホストが設定）`, x0 + 730, y1 + 29, 15, '#9fb2e6'); }
     if (L.online) hud.button('name', x0, y1 + 74, bw, 52, `名前：${L.name}`, '#9aa3c7', '押すと変わる', 17);
+    hud.button('navi', x0 + 244, y1 + 74, bw, 52, `ナビ：${L.navi ? 'ON' : 'OFF'}`, L.navi ? '#ffe9a8' : '#9aa3c7', L.navi ? '次にやることを表示' : '上級者向け：表示しない', 17);
     if (L.code) { hud.button('invite', x0 + 732, y1 + 74, bw, 52, '招待リンクをコピー', '#7dffb0', `部屋コード ${L.code}`, 17); }
-    if (L.host) hud.button('start', W / 2 - 170, 512, 340, 84, 'スタート！', '#ffd23f', L.online ? 'あなたがホストです' : (L.dev === 'kb' ? 'Enter' : ''), 30);
-    else text('ホストがスタートするのを待っています…', W / 2, 554, 22, '#ffe9a8', 'center', 'bold', '#11131f', 5);
+    if (L.host) hud.button('start', W / 2 - 170, 564, 340, 72, 'スタート！', '#ffd23f', L.online ? 'あなたがホストです' : (L.dev === 'kb' ? 'Enter' : ''), 30);
+    else text('ホストがスタートするのを待っています…', W / 2, 600, 22, '#ffe9a8', 'center', 'bold', '#11131f', 5);
     hud.button('back', W - 250, 628, 200, 52, 'もどる', '#9aa3c7', '', 20);
     text(L.hint, 60, 654, 14, '#cfd6ff', 'left', 'normal');
   }

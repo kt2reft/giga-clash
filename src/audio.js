@@ -53,48 +53,86 @@ export function sfx(name) {
     case 'beam': AU.noise(1.2, 0.4, 900, 'bandpass'); AU.tone(220, 1.2, 'sawtooth', 0.15, 2.5); break;
     case 'charge': AU.tone(200, 1.0, 'sawtooth', 0.06, 4); break;
     case 'bonk': AU.tone(400, 0.1, 'square', 0.15, 0.4); break;
+    case 'pump': AU.tone(300 + Math.random() * 200, 0.07, 'square', 0.1, 1.8); break;
     case 'ui': AU.tone(660, 0.06, 'triangle', 0.15, 1.4); break;
     case 'step': AU.noise(0.2, 0.35, 160, 'lowpass'); break;
     case 'fanfare': [523, 659, 784, 1046].forEach((f, i) => AU.tone(f, 0.35, 'square', 0.12, 1, T + i * 0.12)); break;
     case 'sad': [392, 349, 311, 262].forEach((f, i) => AU.tone(f, 0.4, 'triangle', 0.14, 1, T + i * 0.2)); break;
   }
 }
-// ---- BGM：オリジナル曲「ギガント発進！」（ニ短調・4小節ループ）
-const mtof = m => 440 * Math.pow(2, (m - 69) / 12), _ = null;
-const LEAD = [62, _, _, _, 65, _, 69, _, 74, _, 72, _, 69, _, _, _, 70, _, _, _, 69, _, 65, _, 62, _, 65, _, 67, _, _, _,
-  67, _, _, _, 69, _, 72, _, 76, _, 74, _, 72, _, _, _, 73, _, _, _, 76, _, 73, _, 69, _, _, _, _, _, _, _];
-const ROOTS = [38, 34, 36, 33], CHORD = [[62, 65, 69], [58, 62, 65], [60, 64, 67], [61, 64, 69]];
+// ---- BGM：オリジナル曲「ゆけ！ギガント・ブレイバー」（ニ長調・8小節ループ）
+//   ヒーロー物らしい長調のマーチ。I–♭VII–IV–I–vi–IV–V–V の進行に、
+//   ブラス風の主旋律、裏拍のコード刻み、オクターブで跳ねるベース、4つ打ちのドラム。
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+// [ステップ, 音, 長さ]（1小節＝16ステップ）
+const MEL = [
+  [0, 69, 3], [3, 69, 1], [4, 74, 4], [8, 73, 2], [10, 71, 2], [12, 69, 4],
+  [16, 67, 3], [19, 67, 1], [20, 72, 4], [24, 71, 2], [26, 69, 2], [28, 67, 4],
+  [32, 71, 2], [34, 74, 2], [36, 79, 6], [42, 78, 2], [44, 76, 2], [46, 74, 2],
+  [48, 81, 6], [54, 78, 2], [56, 74, 8],
+  [64, 78, 3], [67, 78, 1], [68, 76, 2], [70, 74, 2], [72, 71, 4], [76, 74, 4],
+  [80, 79, 3], [83, 78, 1], [84, 76, 2], [86, 74, 2], [88, 76, 4], [92, 78, 4],
+  [96, 76, 2], [98, 78, 2], [100, 79, 2], [102, 81, 6], [108, 79, 2], [110, 78, 2],
+  [112, 76, 6], [118, 69, 2], [120, 73, 2], [122, 76, 2], [124, 81, 4],
+];
+const MELAT = {}; for (const m of MEL) MELAT[m[0]] = m;
+const ROOT = [38, 36, 43, 38, 35, 43, 45, 45];
+const CH = [[62, 66, 69], [60, 64, 67], [59, 62, 67], [62, 66, 69], [59, 62, 66], [59, 62, 67], [61, 64, 69], [61, 64, 69]];
+// 対旋律（オーバードライブ用のきらきらアルペジオ）
+const ARP = [0, 1, 2, 1];
+function note(f, dur, type, vol, t, dest, att = 0.008, rel = 0.06) {
+  const ac = AU.ctx, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + att); g.gain.setValueAtTime(vol * 0.8, t + Math.max(att, dur - rel)); g.gain.exponentialRampToValueAtTime(0.0008, t + dur + rel);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + rel + 0.02);
+}
+function brass(m, dur, vol, t, D) { const f = mtof(m); note(f, dur, 'sawtooth', vol, t, D, 0.02); note(f * 1.004, dur, 'sawtooth', vol * 0.6, t, D, 0.03); note(f * 2, dur, 'square', vol * 0.18, t, D, 0.02); }
+function kick(t, D, v = 0.55) { AU.tone(140, 0.14, 'sine', v, 0.3, t, D); AU.noise(0.03, 0.15, 1200, 'lowpass', t, D); }
+function snare(t, D, v = 0.3) { AU.noise(0.13, v, 1900, 'bandpass', t, D); AU.tone(220, 0.06, 'triangle', v * 0.4, 0.6, t, D); }
+function hat(t, D, v = 0.07, open = false) { AU.noise(open ? 0.16 : 0.035, v, 8000, 'highpass', t, D); }
+function crash(t, D) { AU.noise(1.1, 0.16, 5000, 'highpass', t, D); }
 export const BGM = {
-  mode: 'title', next: 0, step: 0,
+  mode: 'title', next: 0, step: 0, last: '',
   tick() {
     const ac = AU.ctx; if (!ac || AU.muted || this.mode === 'off') return;
-    const tempo = { od: 156, battle: 132, escape: 160, city: 118, title: 96 }[this.mode] || 96, spb = 60 / tempo / 4;
+    if (this.mode !== this.last) { if ((this.last === 'battle' && this.mode === 'od') || (this.last === 'od' && this.mode === 'battle')) { /* そのまま続ける */ } else this.step = 0; this.last = this.mode; }
+    const tempo = { od: 172, battle: 160, escape: 168, city: 150, title: 138 }[this.mode] || 138, spb = 60 / tempo / 4;
     if (this.next < ac.currentTime) this.next = ac.currentTime + 0.05;
-    while (this.next < ac.currentTime + 0.15) { this.play(this.step, this.next, spb); this.next += spb; this.step = (this.step + 1) % 64; }
+    while (this.next < ac.currentTime + 0.15) { this.play(this.step, this.next, spb); this.next += spb; this.step = (this.step + 1) % 128; }
   },
   play(s, t, spb) {
-    const bar = (s / 16) | 0, i = s % 16, root = ROOTS[bar], D = AU.bgm, m = this.mode;
-    if (m === 'title') {
-      if (i % 8 === 0) AU.tone(mtof(root + 12), spb * 7, 'triangle', 0.12, 1, t, D);
-      if (i % 4 === 0) CHORD[bar].forEach(n => AU.tone(mtof(n), spb * 4, 'sine', 0.025, 1, t, D));
-      if (LEAD[s]) AU.tone(mtof(LEAD[s]), spb * 3, 'triangle', 0.06, 1, t, D); return;
-    }
-    if (m === 'city') {
-      if (i % 4 === 0) AU.tone(mtof(root + 12), spb * 1.8, 'triangle', 0.14, 1, t, D);
-      if (i % 4 === 2) CHORD[bar].forEach(n => AU.tone(mtof(n + 12), spb * 1.2, 'square', 0.018, 1, t, D));
-      if (i % 8 === 0) AU.tone(150, 0.12, 'sine', 0.35, 0.3, t, D); if (i % 8 === 4) AU.noise(0.08, 0.16, 2200, 'bandpass', t, D);
-      if (i % 2 === 1) AU.noise(0.03, 0.05, 7000, 'highpass', t, D);
-      if (LEAD[s]) AU.tone(mtof(LEAD[s] + 12), spb * 1.6, 'triangle', 0.07, 1, t, D); return;
-    }
+    const bar = (s / 16) | 0, i = s % 16, D = AU.bgm, m = this.mode;
     if (m === 'escape') {
-      if (i % 4 === 0) { AU.tone(mtof(root + 12), spb * 2, 'sawtooth', 0.1, 1, t, D); AU.noise(0.12, 0.3, 120, 'lowpass', t, D); }
-      if (i % 8 === 0) AU.tone(880, spb * 3, 'square', 0.05, 1, t, D); if (i % 8 === 4) AU.tone(660, spb * 3, 'square', 0.05, 1, t, D); return;
+      // ピンチの曲：短調で刻むベースと警報のような和音
+      const r = [38, 38, 34, 36][bar % 4];
+      if (i % 2 === 0) note(mtof(r + (i % 4 === 2 ? 12 : 0)), spb * 1.6, 'sawtooth', 0.09, t, D);
+      if (i % 4 === 0) kick(t, D); if (i === 4 || i === 12) snare(t, D); hat(t, D, 0.05);
+      if (i === 0 || i === 8) for (const n of [62, 65, 69]) note(mtof(n + (bar % 2 ? 1 : 0)), spb * 6, 'square', 0.03, t, D);
+      return;
     }
-    if (i % 2 === 0) AU.tone(mtof(root + (i % 8 === 6 ? 12 : 0)), spb * 1.6, 'sawtooth', 0.09, 1, t, D);
-    if (i % 4 === 0) AU.tone(150, 0.16, 'sine', 0.5, 0.25, t, D);
-    if (i % 8 === 4) AU.noise(0.12, 0.25, 1800, 'bandpass', t, D);
-    if (i % 2 === 1) AU.noise(0.03, 0.08, 7000, 'highpass', t, D);
-    if (LEAD[s]) AU.tone(mtof(LEAD[s]), spb * 3.2, 'square', 0.055, 1, t, D);
-    if (m === 'od') { AU.tone(mtof(CHORD[bar][i % 3] + 12), spb * 0.9, 'square', 0.03, 1, t, D); if (i % 4 === 2) AU.noise(0.05, 0.12, 5000, 'highpass', t, D); }
+    const up = m === 'od' ? 2 : 0, root = ROOT[bar] + up, ch = CH[bar].map(n => n + up), mel = MELAT[s];
+    // ベース：オクターブで跳ねる8分
+    if (i % 2 === 0) note(mtof(root + (i % 4 === 2 ? 12 : 0)), spb * 1.7, m === 'title' ? 'triangle' : 'sawtooth', m === 'title' ? 0.14 : 0.1, t, D, 0.005, 0.03);
+    // ドラム
+    if (m === 'title') { if (i === 0 || i === 8) kick(t, D, 0.45); if (i === 4 || i === 12) snare(t, D, 0.22); if (i % 4 === 2) hat(t, D, 0.05); }
+    else {
+      if (i % 4 === 0) kick(t, D);
+      if (i === 4 || i === 12) snare(t, D, m === 'city' ? 0.22 : 0.32);
+      if (i % 2 === 1) hat(t, D, m === 'city' ? 0.05 : 0.07, i === 15);
+      if (m === 'od' && bar === 7 && i >= 8) snare(t, D, 0.12 + (i - 8) * 0.025);
+      if (m !== 'city' && i === 0 && (bar === 0 || bar === 4)) crash(t, D);
+    }
+    // コード：裏拍で刻む（ヒーロー物らしい推進力）
+    if (i % 4 === 2 && m !== 'title') for (const n of ch) note(mtof(n), spb * 0.9, 'square', m === 'city' ? 0.016 : 0.022, t, D, 0.004, 0.03);
+    if (m === 'title' && i === 0) for (const n of ch) note(mtof(n), spb * 14, 'triangle', 0.03, t, D, 0.08, 0.3);
+    // 主旋律
+    if (mel) {
+      const n = mel[1] + up, dur = spb * mel[2] * 0.95;
+      if (m === 'city') { note(mtof(n + 12), dur * 0.8, 'triangle', 0.08, t, D); note(mtof(n), dur * 0.8, 'square', 0.025, t, D); }
+      else if (m === 'title') brass(n, dur, 0.045, t, D);
+      else brass(n, dur, 0.06, t, D);
+    }
+    // オーバードライブ：16分のアルペジオ
+    if (m === 'od') note(mtof(ch[ARP[i % 4]] + 12), spb * 0.8, 'square', 0.018, t, D, 0.003, 0.02);
   },
 };

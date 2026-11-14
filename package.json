@@ -1,0 +1,20 @@
+{
+  "name": "giga-clash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GIGA-CLASH — 街で守れ。そして、乗り込め。4人で1体の巨大ロボ／大怪獣を動かす特撮パーティーアクション",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs && node tools/serve.mjs",
+    "release": "npm version patch --no-git-tag-version && node tools/build.mjs",
+    "sim": "node tools/sim-check.mjs"
+  },
+  "dependencies": {
+    "peerjs": "1.5.4",
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

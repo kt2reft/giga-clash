@@ -91,7 +91,7 @@ export function createHud(ctx, R) {
       drawOverlays(G, view);
       if (G.phase === 'result') drawResult(G, view);
     },
-    drawTouch, drawTitle, drawHelp, drawLobby, drawPause, drawNote, drawOnline,
+    drawTouch, drawTitle, drawHelp, drawLobby, drawPause, drawNote, drawOnline, drawCharSel,
   };
 
   // ---------------------------------------------------------------- 前半戦
@@ -447,7 +447,8 @@ export function createHud(ctx, R) {
     hud.button('gfx', W / 2 + 178, 562, 142, 52, ui.low ? '画質：軽い' : '画質：きれい', '#9aa3c7', '', 18);
     text(ui.pads ? `コントローラー ${ui.pads}台 接続中` : 'コントローラー対応（つなぐと自動で使えます）', W / 2, 650, 14, '#cfd6ff', 'center', 'bold', 'rgba(0,0,0,.8)', 4);
     text(`ver ${ui.ver}`, W - 14, H - 14, 12, 'rgba(220,226,255,.6)', 'right', 'normal');
-    if (ui.newVer) hud.button('reload', W - 330, 14, 316, 50, `新しいバージョン ${ui.newVer}`, '#7dffb0', '押すと再読み込みします', 16);
+    if (ui.newVer) hud.button('update', W - 330, 14, 316, 54, `新しいバージョン ${ui.newVer}`, '#7dffb0', '押すと更新します（任意）', 17);
+    else hud.button('update', W - 214, 14, 200, 54, ui.upd === 'checking' ? '確認中…' : '更新', '#9aa3c7', '最新版を確認して読み込む', 18);
   }
   // ---------------------------------------------------------------- 遊び方・操作マニュアル
   function keycap(k, x, y, col = '#e8ecff', wmin = 34) {
@@ -603,8 +604,8 @@ export function createHud(ctx, R) {
     hud.button('locals', x0 + 244, y1, bw, 58, `ローカル人数：${L.nLocal}`, '#cfe3ff', L.padInfo, 19);
     if (L.host) { hud.button('diff', x0 + 488, y1, bw, 58, `Botの強さ：${DIFF[L.diff].name}`, '#cfe3ff', '相手が全員Botのとき', 19); hud.button('p1', x0 + 732, y1, bw, 58, L.skipP1 ? '後半戦だけ' : '前半戦＋後半戦', '#cfe3ff', '試合の長さ', 19); }
     else { text(`Botの強さ：${DIFF[L.diff].name}　／　${L.skipP1 ? '後半戦だけ' : '前半戦＋後半戦'}（ホストが設定）`, x0 + 730, y1 + 29, 15, '#9fb2e6'); }
-    if (L.online) hud.button('name', x0, y1 + 74, bw, 52, `名前：${L.name}`, '#9aa3c7', '押すと変わる', 17);
-    hud.button('char', x0 + 488, y1 + 74, bw, 52, `キャラ：${CHARS[L.team][L.ch].title}`, '#ffd6a5', '押すとキャラを替える', 17);
+    hud.button('name', x0, y1 + 74, bw, 52, `名前：${L.name}`, '#c9f0ff', '押すと名前を入力', 17);
+    hud.button('char', x0 + 488, y1 + 74, bw, 52, `キャラ：${CHARS[L.team][L.ch].title}`, '#ffd6a5', '押すとキャラを選ぶ', 17);
     hud.button('navi', x0 + 244, y1 + 74, bw, 52, `ナビ：${L.navi ? 'ON' : 'OFF'}`, L.navi ? '#ffe9a8' : '#9aa3c7', L.navi ? '次にやることを表示' : '上級者向け：表示しない', 17);
     if (L.code) { hud.button('invite', x0 + 732, y1 + 74, bw, 52, '招待リンクをコピー', '#7dffb0', `部屋コード ${L.code}`, 17); }
     if (L.host) hud.button('start', W / 2 - 170, 564, 340, 72, 'スタート！', '#ffd23f', L.online ? 'あなたがホストです' : (L.dev === 'kb' ? 'Enter' : ''), 30);
@@ -623,12 +624,45 @@ export function createHud(ctx, R) {
     text('つながらないときは、ホストのネットワーク（会社・学校のWi-Fiなど）が原因のことがあります', W / 2, 440, 13, '#9fb2e6', 'center', 'normal');
     hud.button('back', W / 2 - 100, 520, 200, 56, 'もどる', '#9aa3c7', '', 20);
   }
-  function drawPause(online) {
+  function drawPause(online, newVer = '') {
     hud.buttons = [];
     ctx.fillStyle = 'rgba(5,6,14,.75)'; ctx.fillRect(0, 0, W, H);
     text(online ? 'メニュー' : '一時停止', W / 2, 210, 56, '#ffd23f', 'center', 'bold', '#11131f', 8);
     if (online) text('オンライン中は試合が止まりません', W / 2, 262, 16, '#cfd6ff', 'center', 'normal');
     hud.button('resume', W / 2 - 160, 300, 320, 68, 'もどる', '#ffd23f', '', 26); hud.button('quit', W / 2 - 160, 388, 320, 60, online ? '退出してタイトルへ' : 'タイトルへ', '#cfe3ff', '', 22);
+    hud.button('update', W / 2 - 160, 466, 320, 60, newVer ? `更新する（ver ${newVer}）` : '最新版に更新', newVer ? '#7dffb0' : '#9aa3c7', online ? '部屋からは退出します' : 'いまの試合は終了します', 20);
+  }
+  // ---------------------------------------------------------------- キャラクター選択
+  function wrapText(str, x, y, maxW, sz, col, lh) {
+    ctx.font = font(sz, 'normal'); let line = '', n = 0;
+    for (const ch of str) { if (ctx.measureText(line + ch).width > maxW && line) { text(line, x, y + n * lh, sz, col, 'left', 'normal'); n++; line = ch; } else line += ch; }
+    if (line) { text(line, x, y + n * lh, sz, col, 'left', 'normal'); n++; } return n;
+  }
+  function drawCharSel(m) {
+    hud.buttons = [];
+    ctx.fillStyle = 'rgba(5,6,14,.94)'; ctx.fillRect(0, 0, W, H);
+    text('キャラクター選択', W / 2, 36, 30, '#ffd23f', 'center', 'bold', '#11131f', 6);
+    text('どちらのチームのキャラでも自由に選べます（チームもいっしょに切り替わります）', W / 2, 70, 14, '#cfd6ff', 'center', 'normal');
+    const cw = 230, gap = 10, x0 = (W - cw * 5 - gap * 4) / 2, ch = 254;
+    for (const t of [0, 1]) {
+      const y = 92 + t * (ch + 20);
+      text(`${TEAM_NAME[t]}チーム`, x0 - 8, y - 6, 13, TEAM_COL[t], 'left');
+      for (let k = 0; k < TN; k++) {
+        const c = CHARS[t][k], x = x0 + k * (cw + gap), slot = t * TN + k, sel = m.team === t && m.ch === k, i = hud.buttons.length;
+        rr(x, y + 4, cw, ch - 10, 14); ctx.fillStyle = sel ? 'rgba(255,210,63,.16)' : '#1b2142'; ctx.fill();
+        ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#ffd23f' : TEAM_COL[t]; ctx.stroke();
+        if (hud.showFocus && hud.focus === i) { rr(x - 5, y - 1, cw + 10, ch, 18); ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+        face(SLOT_COL[slot], x + 34, y + 40, 1.25, t);
+        text(c.title, x + 64, y + 32, 19, SLOT_COL[slot], 'left'); text(c.color, x + 64, y + 54, 12, '#9fb2e6', 'left', 'normal');
+        if (sel) text('選択中', x + cw - 12, y + 22, 12, '#ffd23f', 'right');
+        let yy = y + 82;
+        for (const [lab, v, lc] of [['前半戦', c.p1, '#7fe8ff'], ['裏方', c.p2, '#7dffb0'], ['特徴', c.pas, '#ffd6a5']]) {
+          text(lab, x + 12, yy, 12, lc, 'left'); yy += 18; yy += wrapText(v, x + 12, yy, cw - 24, 12, '#e8ecff', 17) * 17 + 6;
+        }
+        hud.buttons.push({ id: `pick${slot}`, x, y: y + 4, w: cw, h: ch - 10 });
+      }
+    }
+    hud.button('charBack', W / 2 - 150, H - 74, 300, 56, 'もどる', '#9aa3c7', '', 22);
   }
   function drawNote(s) { const w = Math.max(600, tw(s, 16) + 40); rr(W / 2 - w / 2, H - 62, w, 44, 12); ctx.fillStyle = 'rgba(8,10,22,.92)'; ctx.fill(); ctx.strokeStyle = '#ff9a3c'; ctx.lineWidth = 2; ctx.stroke(); text(s, W / 2, H - 40, 16, '#ffe9a8'); }
   return hud;

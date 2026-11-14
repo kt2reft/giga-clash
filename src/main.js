@@ -26,7 +26,7 @@ $('rot').addEventListener('pointerdown', e => e.currentTarget.classList.remove('
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 // ---------------------------------------------------------------- 状態
-const APP = { screen: 'title', help: -1, paused: false, note: '', noteT: 0 };
+const APP = { screen: 'title', help: -1, paused: false, note: '', noteT: 0, charSel: false };
 let G = null;
 const NAMES = ['ハヤテ', 'ツバサ', 'リュウ', 'アカネ', 'ミドリ', 'ソラ', 'カイ', 'ナギ', 'レン', 'ヒカリ', 'ユウ', 'マコト', 'シン', 'ルナ'];
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
@@ -114,6 +114,7 @@ function pollPads() {
     const any = dx || dy || [0, 1, 2, 3, 4, 5, 9].some(b);
     if (li >= 0) PADS.kind[li] = padKind(gp.id);
     if (any) { AU.unlock(); if (li === 0) { LOC.dev = 'pad'; const k = padKind(gp.id); if (k !== LOC.pad) { LOC.pad = k; store.set('gc_pad', k); } } }
+    if (ASK.open) { const sw = padKind(gp.id) === 'sw'; if (edge(sw ? 1 : 0)) ASK.ok(); else if (edge(sw ? 0 : 1)) ASK.cancel(); else if (edge(2) && ASK.extra) ASK.extra(); prev.b = gp.buttons.map((_, i) => b(i)); continue; }
     if (edge(9)) uiQ.pause = true;
     if (uia) {
       if (dx && dx !== prev.dx) uiQ.dx = dx; if (dy && dy !== prev.dy) uiQ.dy = dy;
@@ -180,11 +181,11 @@ function drainEvents() {
 function beginMatch(g, slots) { G = g; LOC.slots = slots; APP.screen = 'game'; APP.paused = false; hud.reset(); R.reset(); touch.btn = {}; touch.pointers.clear(); touch.stick = null; for (const p of players) { p.pend = newPend(); p.card = 0; p.rt = -1; } hud.focus = -1; }
 function offlineSlots() {
   const sl = Array.from({ length: S.NS }, (_, i) => ({ name: S.BOT_NAMES[i], human: false, col: S.SLOT_COL[i] })), mine = [];
-  for (let li = 0; li < LOC.n; li++) { const s = LOC.team * S.TN + (LOC.ch + li) % S.TN; sl[s].human = true; sl[s].name = LOC.n === 1 ? 'あなた' : `P${li + 1}`; mine.push(s); }
+  for (let li = 0; li < LOC.n; li++) { const s = LOC.team * S.TN + (LOC.ch + li) % S.TN; sl[s].human = true; sl[s].name = li === 0 ? (LOC.name || 'あなた') : `P${li + 1}`; mine.push(s); }
   return [sl, mine];
 }
 function startOffline(extra = {}) { const [sl, mine] = offlineSlots(); beginMatch(S.createMatch({ slots: sl, diff: LOC.diff, skipP1: LOC.skipP1, ...extra }), mine); }
-function toTitle() { leaveOnline(); G = null; APP.screen = 'title'; APP.paused = false; hud.focus = -1; }
+function toTitle() { leaveOnline(); G = null; APP.charSel = false; APP.screen = 'title'; APP.paused = false; hud.focus = -1; }
 function toLobby() { G = null; APP.screen = 'lobby'; APP.paused = false; hud.focus = -1; if (NET.on && NET.isHost) publishHb('lobby'); }
 
 // ---------------------------------------------------------------- オンライン（room）
@@ -216,16 +217,30 @@ function copyInvite() {
   try { navigator.clipboard.writeText(url).then(done, () => askText('この招待リンクをコピーして相手に送ってください', url, null)); } catch (e) { askText('この招待リンクをコピーして相手に送ってください', url, null); }
 }
 // ---- 文字入力（部屋コード入力・リンク表示）
-function askText(title, value, onOk) {
+function askName() {
+  askText('名前を入力（8文字まで）', LOC.name, v => {
+    const n = String(v || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 8);
+    LOC.name = n || NAMES[(Math.random() * NAMES.length) | 0]; store.set('gc_name', LOC.name);
+    if (NET.on) setPresence({ gc: myGc(NET.isHost) });
+  }, { label: 'おまかせ', fn: cur => { let n; do n = NAMES[(Math.random() * NAMES.length) | 0]; while (n === cur); return n; } });
+}
+const ASK = { open: false, ok: null, cancel: null, extra: null };
+function askText(title, value, onOk, extra) {
   const old = document.getElementById('ask'); if (old) old.remove();
   const box = document.createElement('div'); box.id = 'ask';
   box.style.cssText = 'position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;background:rgba(5,6,14,.75);font:bold 18px "Hiragino Sans","Noto Sans JP",sans-serif;color:#ffe9a8';
   box.innerHTML = '<div style="background:#161b33;border:3px solid #ffd23f;border-radius:16px;padding:22px;max-width:92vw;width:520px;display:flex;flex-direction:column;gap:14px"><div class="t"></div><input style="font:bold 22px monospace;padding:10px;border-radius:10px;border:2px solid #4a5577;background:#0b0d18;color:#fff;letter-spacing:2px"><div style="display:flex;gap:10px;justify-content:flex-end"><button class="c" style="font:bold 16px sans-serif;padding:10px 18px;border-radius:10px;border:0;background:#9aa3c7">閉じる</button><button class="o" style="font:bold 16px sans-serif;padding:10px 18px;border-radius:10px;border:0;background:#ffd23f">OK</button></div></div>';
   box.querySelector('.t').textContent = title; const inp = box.querySelector('input'); inp.value = value || '';
-  const close = () => { box.remove(); ui.focus(); }, ok = () => { const v = inp.value; close(); if (onOk) onOk(v); };
+  const close = () => { box.remove(); ASK.open = false; ui.focus(); }, ok = () => { const v = inp.value; close(); if (onOk) onOk(v); };
   box.querySelector('.c').onclick = close; box.querySelector('.o').onclick = ok;
+  ASK.open = true; ASK.ok = ok; ASK.cancel = close; ASK.extra = null;
+  if (extra) {
+    const b = document.createElement('button'); b.textContent = extra.label; b.style.cssText = 'font:bold 16px sans-serif;padding:10px 14px;border-radius:10px;border:2px solid #11131f;background:#c9f0ff;cursor:pointer';
+    const row = box.querySelector('.o').parentNode; row.insertBefore(b, row.firstChild);
+    if (PADS.list.length) { const P = PADL[LOC.pad] || PADL.xbox, sw = LOC.pad === 'sw', h = document.createElement('div'); h.style.cssText = 'font:14px sans-serif;color:#9fb2e6;text-align:right'; h.textContent = `コントローラー：${sw ? P.B : P.A} OK　${sw ? P.A : P.B} 閉じる　${P.X} おまかせ`; row.parentNode.appendChild(h); } ASK.extra = () => { inp.value = extra.fn(inp.value); inp.focus(); }; b.onclick = ASK.extra;
+  }
   if (!onOk) box.querySelector('.o').style.display = 'none';
-  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') ok(); if (e.key === 'Escape') close(); });
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && !e.isComposing) ok(); if (e.key === 'Escape') close(); });
   box.addEventListener('pointerdown', e => e.stopPropagation()); box.addEventListener('keydown', e => e.stopPropagation());
   document.body.appendChild(box); setTimeout(() => { inp.focus(); inp.select(); }, 30);
 }
@@ -365,13 +380,15 @@ function onUI(id) {
   AU.unlock(); sfx('ui');
   const host = !NET.on || NET.isHost;
   if (id.startsWith('card')) { pickCard(0, +id.slice(4) + 1); return; }
+  if (id.startsWith('pick')) { const s = +id.slice(4); LOC.team = S.teamOf(s); LOC.ch = s % S.TN; store.set('gc_ch', String(LOC.ch)); APP.charSel = false; hud.focus = -1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); return; }
   switch (id) {
     case 'solo': leaveOnline(); APP.screen = 'lobby'; hud.focus = -1; break;
     case 'online': onlineButton(); break;
     case 'create': startPeer(newRoomCode(), true); break;
     case 'join': askText('ホストから聞いた部屋コード（5文字）を入力', '', v => startPeer(v, false)); break;
     case 'invite': copyInvite(); break;
-    case 'reload': location.reload(); break;
+    case 'reload': case 'update': doUpdate(); break;
+    case 'charBack': APP.charSel = false; hud.focus = -1; break;
     case 'help': APP.help = 0; hud.focus = -1; break;
     case 'helpNext': APP.help = APP.help >= 4 ? -1 : APP.help + 1; hud.focus = -1; break;
     case 'help0': case 'help1': case 'help2': case 'help3': case 'help4': APP.help = +id.slice(4); break;
@@ -382,10 +399,10 @@ function onUI(id) {
     case 'team': LOC.team ^= 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'locals': LOC.n = LOC.n % 4 + 1; if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
     case 'diff': if (host) LOC.diff = (LOC.diff + 1) % 4; break;
-    case 'char': LOC.ch = (LOC.ch + 1) % S.TN; store.set('gc_ch', String(LOC.ch)); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
+    case 'char': APP.charSel = true; hud.focus = -1; break;
     case 'navi': LOC.navi = !LOC.navi; store.set('gc_navi', LOC.navi ? '1' : '0'); break;
     case 'p1': if (host) LOC.skipP1 = !LOC.skipP1; break;
-    case 'name': LOC.name = NAMES[(NAMES.indexOf(LOC.name) + 1 + ((Math.random() * 3) | 0)) % NAMES.length]; store.set('gc_name', LOC.name); if (NET.on) setPresence({ gc: myGc(NET.isHost) }); break;
+    case 'name': askName(); break;
     case 'start': case 'again': if (!host) break; if (NET.on) hostStart(); else startOffline(); break;
     case 'lobby': if (host) toLobby(); break;
     case 'back': case 'quit': case 'leave': toTitle(); break;
@@ -397,14 +414,14 @@ function uiNav() {
   const B = hud.buttons;
   if (uiQ.pause && APP.screen === 'game' && G && G.phase !== 'result') { APP.paused = !APP.paused; hud.focus = -1; }
   if (uiActive() && B.length) {
-    const def = () => { const i = B.findIndex(b => ['start', 'solo', 'again', 'resume', 'helpNext'].includes(b.id)); return i < 0 ? 0 : i; };
+    const def = () => { const want = APP.charSel ? [`pick${LOC.team * S.TN + LOC.ch}`] : ['start', 'solo', 'again', 'resume', 'helpNext']; const i = B.findIndex(b => want.includes(b.id)); return i < 0 ? 0 : i; };
     if (uiQ.dx || uiQ.dy) {
       hud.showFocus = true;
       if (hud.focus < 0 || hud.focus >= B.length) hud.focus = def();
       else { const c = B[hud.focus], cx = c.x + c.w / 2, cy = c.y + c.h / 2; let best = -1, bd = 1e9; B.forEach((b, i) => { if (i === hud.focus) return; const ox = b.x + b.w / 2 - cx, oy = b.y + b.h / 2 - cy, along = ox * uiQ.dx + oy * uiQ.dy; if (along <= 4) return; const d = along + (Math.abs(ox * uiQ.dy) + Math.abs(oy * uiQ.dx)) * 2; if (d < bd) { bd = d; best = i; } }); if (best >= 0) hud.focus = best; }
     }
     if (uiQ.ok) { const i = hud.showFocus && hud.focus >= 0 && hud.focus < B.length ? hud.focus : def(); if (B[i]) onUI(B[i].id); }
-    if (uiQ.back) { if (APP.help >= 0) APP.help = -1; else if (APP.paused) APP.paused = false; else if (APP.screen === 'lobby' || APP.screen === 'online') toTitle(); }
+    if (uiQ.back) { if (APP.help >= 0) APP.help = -1; else if (APP.charSel) { APP.charSel = false; hud.focus = -1; } else if (APP.paused) APP.paused = false; else if (APP.screen === 'lobby' || APP.screen === 'online') toTitle(); }
   }
   uiQ.dx = uiQ.dy = 0; uiQ.ok = uiQ.back = uiQ.pause = false;
 }
@@ -471,10 +488,10 @@ function frame(now) {
     hud.drawGame(G, view);
     if (touch.used && !uiActive()) hud.drawTouch(touch, touchLayout());
     if (G.phase !== 'result' && !APP.paused) hud.button('menu', W / 2 + 62, 14, 34, 34, '≡', 'rgba(255,255,255,.55)', '', 20);
-    if (APP.paused) hud.drawPause(NET.on);
-  } else if (APP.screen === 'lobby') hud.drawLobby(lobbyModel());
+    if (APP.paused) hud.drawPause(NET.on, UPD.newVer);
+  } else if (APP.screen === 'lobby') { if (APP.charSel) hud.drawCharSel({ team: LOC.team, ch: LOC.ch }); else hud.drawLobby(lobbyModel()); }
   else if (APP.screen === 'online') hud.drawOnline();
-  else hud.drawTitle({ online: IN_CLAUDE ? !!NET.claudeRoom : PEER_OK, onlineWhy: 'この表示では使えません', muted: AU.muted, pads: PADS.list.length, low: LOC.low, ver: VERSION, newVer: UPD.newVer });
+  else hud.drawTitle({ online: IN_CLAUDE ? !!NET.claudeRoom : PEER_OK, onlineWhy: 'この表示では使えません', muted: AU.muted, pads: PADS.list.length, low: LOC.low, ver: VERSION, newVer: UPD.newVer, upd: UPD.st });
   if (APP.help >= 0) hud.drawHelp(APP.help, { pad: LOC.helpPad || LOC.pad, dev: LOC.dev });
   if (APP.noteT > 0) hud.drawNote(APP.note);
   requestAnimationFrame(frame);
@@ -482,7 +499,22 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // ---------------------------------------------------------------- 新しいバージョンの確認（GitHub Pages）
-const UPD = { newVer: '' };
+const UPD = { newVer: '', st: '' };
+// 「更新」ボタン：最新版を確認して、あれば読み込み直す（キャッシュを避けるため ?v= を付ける）
+async function doUpdate() {
+  if (UPD.st === 'checking') return;
+  if (NET.on) leaveOnline();
+  const go = v => { let q = location.search.replace(/([?&])v=[^&]*&?/, '$1').replace(/[?&]$/, ''); q += (q ? '&' : '?') + 'v=' + encodeURIComponent(v || Date.now()); location.replace(location.pathname + q); };
+  if (IN_CLAUDE || !/^https?:$/.test(location.protocol) || VERSION === 'dev') { note('最新版を読み込みます…'); setTimeout(() => location.reload(), 300); return; }
+  UPD.st = 'checking';
+  try {
+    const r = await fetch('./version.json?t=' + Date.now(), { cache: 'no-store' }); const j = r.ok ? await r.json() : null;
+    UPD.st = '';
+    if (j && j.version && j.version !== VERSION) { note(`ver ${j.version} に更新します…`); setTimeout(() => go(j.version), 400); }
+    else if (j) { UPD.newVer = ''; note(`いまが最新版です（ver ${VERSION}）`); if (APP.screen === 'game') APP.paused = false; }
+    else note('更新の確認に失敗しました。通信状態を確かめてください');
+  } catch (e) { UPD.st = ''; note('更新の確認に失敗しました。通信状態を確かめてください'); }
+}
 async function checkVersion() {
   if (IN_CLAUDE || !/^https?:$/.test(location.protocol) || VERSION === 'dev') return;
   try { const r = await fetch('./version.json?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const j = await r.json(); if (j && j.version && j.version !== VERSION) UPD.newVer = String(j.version).slice(0, 20); } catch (e) { }
